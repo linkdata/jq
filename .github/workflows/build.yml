@@ -1,0 +1,52 @@
+name: Build
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go:
+          - "stable"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Go generate
+        run: go generate ./...
+
+      - name: Test
+        run: go test -tags debug -bench=. -coverprofile=coverage.out ./...
+
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: ./...
+
+      - name: Build
+        run: go build .
+
+      - name: actions-goveralls
+        uses: shogo82148/actions-goveralls@v1
+        with:
+          path-to-profile: coverage.out
+
+      - name: Go report card
+        uses: creekorful/goreportcard-action@v1.0
