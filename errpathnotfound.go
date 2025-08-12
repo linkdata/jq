@@ -6,12 +6,12 @@ import "fmt"
 var ErrPathNotFound errPathNotFound
 
 type errPathNotFound struct {
-	index string
-	obj   any
+	index   string
+	objtype string
 }
 
 func (e errPathNotFound) Error() string {
-	return fmt.Sprintf("%q not found in %T", e.index, e.obj)
+	return fmt.Sprintf("%q not found in %s", e.index, e.objtype)
 }
 
 func (errPathNotFound) Is(other error) bool {

@@ -20,7 +20,7 @@ func matchField(f reflect.StructField, want string) (yes bool) {
 	return strings.EqualFold(name, want)
 }
 
-func getRef(obj reflect.Value, jspath string) (v reflect.Value, err error) {
+func getRef(obj reflect.Value, jspath string) (v reflect.Value, mapkey reflect.Value, err error) {
 	v = obj
 	elem, tail, _ := strings.Cut(jspath, ".")
 	if elem != "" {
@@ -40,32 +40,52 @@ func getRef(obj reflect.Value, jspath string) (v reflect.Value, err error) {
 					return getRef(f, tail)
 				}
 			}
+		case reflect.Map:
+			iter := v.MapRange()
+			for iter.Next() {
+				if iter.Key().String() == elem {
+					if tail == "" {
+						mapkey = iter.Key()
+						return
+					}
+					return getRef(iter.Value(), tail)
+				}
+			}
 		case reflect.Pointer, reflect.Interface:
 			if !(v.Kind() != reflect.Pointer && v.Type().Name() != "" && v.CanAddr()) {
 				v = v.Elem()
 			}
 			return getRef(v, jspath)
 		}
-		err = errors.Join(err, errPathNotFound{elem, obj})
+		err = errors.Join(err, errPathNotFound{elem, v.Type().String()})
 	}
 	return
 }
 
 func Get(obj any, jspath string) (val any, err error) {
+	var mk reflect.Value
 	rv := reflect.ValueOf(obj)
-	if rv, err = getRef(rv, jspath); err == nil {
+	if rv, mk, err = getRef(rv, jspath); err == nil {
+		if mk.IsValid() {
+			rv = rv.MapIndex(mk)
+		}
 		val = rv.Interface()
 	}
 	return
 }
 
 func Set(obj any, jspath string, val any) (err error) {
+	var mk reflect.Value
 	rv := reflect.ValueOf(obj)
-	if rv, err = getRef(rv, jspath); err == nil {
-		if !rv.CanAddr() {
-			rv = rv.Elem()
+	if rv, mk, err = getRef(rv, jspath); err == nil {
+		if mk.IsValid() {
+			rv.SetMapIndex(mk, reflect.ValueOf(val))
+		} else {
+			if !rv.CanAddr() {
+				rv = rv.Elem()
+			}
+			rv.Set(reflect.ValueOf(val))
 		}
-		rv.Set(reflect.ValueOf(val))
 	}
 	return
 }
