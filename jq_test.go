@@ -69,61 +69,54 @@ func maybeError(t *testing.T, err error) {
 	}
 }
 
+func mustEqual(t *testing.T, a, b any) {
+	t.Helper()
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf(" got %T %#v\nwant %T %#v\n", a, a, b, b)
+	}
+}
+
 func TestGet_int(t *testing.T) {
 	v, err := jq.Get(testInt, "")
 	maybeError(t, err)
-	if v != testInt {
-		t.Error(v)
-	}
+	mustEqual(t, v, testInt)
 }
 
 func TestGet_string(t *testing.T) {
 	v, err := jq.Get(testString, "")
 	maybeError(t, err)
-	if v != testString {
-		t.Error(v)
-	}
+	mustEqual(t, v, testString)
 }
 
 func TestGet_intArray(t *testing.T) {
 	v, err := jq.Get(testIntArray, "")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testIntArray) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testIntArray)
 }
 
 func TestGet_intArrayIndex(t *testing.T) {
 	for i := range testIntArray {
 		v, err := jq.Get(testIntArray, strconv.Itoa(i))
 		maybeError(t, err)
-		if !reflect.DeepEqual(v, testIntArray[i]) {
-			t.Error(v)
-		}
+		mustEqual(t, v, testIntArray[i])
 	}
 }
 
 func TestGet_stringMatrix(t *testing.T) {
 	v, err := jq.Get(testStringMatrix, "")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStringMatrix) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStringMatrix)
 }
 
 func TestGet_stringMatrixIndex(t *testing.T) {
 	for i, sl := range testStringMatrix {
 		v, err := jq.Get(testStringMatrix, strconv.Itoa(i))
 		maybeError(t, err)
-		if !reflect.DeepEqual(v, sl) {
-			t.Error(i, v)
-		}
+		mustEqual(t, v, sl)
 		for j, s := range sl {
-			v, err := jq.Get(testStringMatrix, fmt.Sprintf("%d.%d", i, j))
+			v, err := jq.Get(&testStringMatrix, fmt.Sprintf("%d.%d", i, j))
 			maybeError(t, err)
-			if !reflect.DeepEqual(v, s) {
-				t.Error(i, j, v)
-			}
+			mustEqual(t, v, s)
 		}
 	}
 }
@@ -131,178 +124,144 @@ func TestGet_stringMatrixIndex(t *testing.T) {
 func TestGet_structVal(t *testing.T) {
 	v, err := jq.Get(testStructVal, "")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal)
 }
 
 func TestGet_structPtr(t *testing.T) {
 	v, err := jq.Get(&testStructVal, "")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, &testStructVal) {
-		t.Error(v)
-	}
+	mustEqual(t, v, &testStructVal)
 }
 
 func TestGet_structValField(t *testing.T) {
-	v, err := jq.Get(testStructVal, "S")
+	v, err := jq.Get(&testStructVal, "S")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal.S) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal.S)
 }
 
 func TestGet_structPtrField(t *testing.T) {
 	v, err := jq.Get(&testStructVal, "S")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal.S) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal.S)
 }
 
 func TestGet_structPtrPtr(t *testing.T) {
 	v, err := jq.Get(&testStructVal, "P")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal.P) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal.P)
 }
 
 func TestGet_structValPtrString(t *testing.T) {
-	v, err := jq.Get(testStructVal, "P.S")
+	v, err := jq.Get(&testStructVal, "P.S")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal.P.S) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal.P.S)
 }
 
 func TestGet_structValFieldTag(t *testing.T) {
-	v, err := jq.Get(testStructVal, "sX")
+	v, err := jq.Get(&testStructVal, "sX")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal.S_X) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal.S_X)
 }
 
 func TestGet_structValFieldTagIGN(t *testing.T) {
-	_, err := jq.Get(testStructVal, "IGN")
+	_, err := jq.Get(&testStructVal, "IGN")
 	if !errors.Is(err, jq.ErrPathNotFound) {
 		t.Error(err)
+	}
+	if err != nil {
+		mustEqual(t, err.Error(), "jq: \"IGN\" not found in jq_test.testType")
 	}
 }
 
 func TestGet_intArrayOutOfBounds(t *testing.T) {
-	_, err := jq.Get(testIntArray, "4")
+	_, err := jq.Get(&testIntArray, "4")
 	if !errors.Is(err, jq.ErrPathNotFound) {
 		t.Error(err)
 	}
-	t.Log(err)
 }
 
 func TestGet_intArrayNotNumber(t *testing.T) {
-	_, err := jq.Get(testIntArray, "foo")
+	_, err := jq.Get(&testIntArray, "foo")
 	if !errors.Is(err, jq.ErrPathNotFound) {
 		t.Errorf("%q %T", err, err)
 	}
 }
 
 func TestGet_structValPath(t *testing.T) {
-	v, err := jq.Get(testStructVal, "SA.1.SA.0.sX")
+	v, err := jq.Get(&testStructVal, "SA.1.SA.0.sX")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal.SA[1].SA[0].S_X) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal.SA[1].SA[0].S_X)
 }
 
 func TestGet_structPtrPath(t *testing.T) {
 	v, err := jq.Get(&testStructVal, "PA.1.PA.0.sX")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal.PA[1].PA[0].S_X) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal.PA[1].PA[0].S_X)
 }
 
 func TestSet_int(t *testing.T) {
 	var x int
 	err := jq.Set(&x, "", 2)
 	maybeError(t, err)
-	if x != 2 {
-		t.Error(x)
-	}
+	mustEqual(t, x, 2)
 }
 
 func TestSet_string(t *testing.T) {
 	var x string
 	err := jq.Set(&x, "", "foo")
 	maybeError(t, err)
-	if !reflect.DeepEqual(x, "foo") {
-		t.Error(x)
-	}
+	mustEqual(t, x, "foo")
 }
 
 func TestSet_intArray(t *testing.T) {
 	x := []int{1, 2, 3}
 	err := jq.Set(&x, "1", 4)
 	maybeError(t, err)
-	if !reflect.DeepEqual(x, []int{1, 4, 3}) {
-		t.Error(x)
-	}
+	mustEqual(t, x, []int{1, 4, 3})
 }
 
 func TestSet_intArrayExpand(t *testing.T) {
 	x := []int{1, 2, 3}
 	err := jq.Set(&x, "3", 4)
 	maybeError(t, err)
-	if !reflect.DeepEqual(x, []int{1, 2, 3, 4}) {
-		t.Error(x)
-	}
+	mustEqual(t, x, []int{1, 2, 3, 4})
 }
 
 func TestSet_structField(t *testing.T) {
 	var x testType = testStructVal
 	err := jq.Set(&x, "sX", "foo!")
 	maybeError(t, err)
-	if x.S_X != "foo!" {
-		t.Error(x)
-	}
+	mustEqual(t, x.S_X, "foo!")
 }
 
 func TestSet_structValArrayField(t *testing.T) {
 	var x testType = testStructVal
 	err := jq.Set(&x, "SA.0.S", "foo!")
 	maybeError(t, err)
-	if x.SA[0].S != "foo!" {
-		t.Error(x)
-	}
+	mustEqual(t, x.SA[0].S, "foo!")
 }
 
 func TestSet_structPrtArrayField(t *testing.T) {
 	var x testType = testStructVal
 	err := jq.Set(&x, "PA.1.S", "foo!")
 	maybeError(t, err)
-	if x.PA[1].S != "foo!" {
-		t.Error(x)
-	}
+	mustEqual(t, x.PA[1].S, "foo!")
 }
 
 func TestGet_map(t *testing.T) {
-	v, err := jq.Get(testStructVal, "M")
+	v, err := jq.Get(&testStructVal, "M")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal.M) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal.M)
 }
 
 func TestGet_mapInt(t *testing.T) {
-	v, err := jq.Get(testStructVal, "M.MI")
+	v, err := jq.Get(&testStructVal, "M.MI")
 	maybeError(t, err)
-	if !reflect.DeepEqual(v, testStructVal.M["MI"]) {
-		t.Error(v)
-	}
+	mustEqual(t, v, testStructVal.M["MI"])
 }
 
 func TestGet_mapMapString(t *testing.T) {
-	v, err := jq.Get(testStructVal, "M.MM.MMS")
+	v, err := jq.Get(&testStructVal, "M.MM.MMS")
 	maybeError(t, err)
 	if !reflect.DeepEqual(v, "string2") {
 		t.Error(v)
@@ -310,7 +269,7 @@ func TestGet_mapMapString(t *testing.T) {
 }
 
 func TestGet_mapMapStringNotFound(t *testing.T) {
-	_, err := jq.Get(testStructVal, "M.MM.MMX")
+	_, err := jq.Get(&testStructVal, "M.MM.MMX")
 	if !errors.Is(err, jq.ErrPathNotFound) {
 		t.Errorf("%q %T", err, err)
 	}
@@ -320,23 +279,16 @@ func TestSet_mapInt(t *testing.T) {
 	x := testStructVal
 	err := jq.Set(&x, "M.MI", 3)
 	maybeError(t, err)
-	if y := x.M["MI"]; !reflect.DeepEqual(y, 3) {
-		t.Error(y)
-	}
+	mustEqual(t, x.M["MI"], 3)
 }
 
 func TestSet_mapMapInt(t *testing.T) {
 	x := testStructVal
-
 	err := jq.Set(&x, "M.MM.MMI", 33)
 	maybeError(t, err)
-
 	got, err := jq.Get(x, "M.MM.MMI")
 	maybeError(t, err)
-
-	if !reflect.DeepEqual(33, got) {
-		t.Error(got)
-	}
+	mustEqual(t, got, 33)
 }
 
 func TestGetAs(t *testing.T) {
@@ -366,4 +318,13 @@ func TestSetTypeMismatch(t *testing.T) {
 	if x := err.Error(); x != "jq: expected int, not string" {
 		t.Error(x)
 	}
+}
+
+func TestSetAcceptsGet(t *testing.T) {
+	x := testStructVal
+	y, err := jq.Get(x, "")
+	maybeError(t, err)
+	err = jq.Set(&x, "", y)
+	maybeError(t, err)
+	mustEqual(t, x, y)
 }
