@@ -11,7 +11,7 @@ type errPathNotFound struct {
 }
 
 func (e errPathNotFound) Error() string {
-	return fmt.Sprintf("%q not found in %s", e.index, e.objtype)
+	return fmt.Sprintf("jq: %q not found in %s", e.index, e.objtype)
 }
 
 func (errPathNotFound) Is(other error) bool {

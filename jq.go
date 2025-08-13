@@ -20,7 +20,7 @@ func matchField(f reflect.StructField, want string) (yes bool) {
 	return strings.EqualFold(name, want)
 }
 
-func getRef(obj reflect.Value, jspath string) (v reflect.Value, mapkey reflect.Value, err error) {
+func getRef(obj reflect.Value, jspath string, setting bool) (v reflect.Value, index reflect.Value, err error) {
 	v = obj
 	elem, tail, _ := strings.Cut(jspath, ".")
 	if elem != "" {
@@ -28,16 +28,15 @@ func getRef(obj reflect.Value, jspath string) (v reflect.Value, mapkey reflect.V
 		case reflect.Array, reflect.Slice:
 			var idx int
 			if idx, err = strconv.Atoi(elem); err == nil {
-				if idx >= 0 && idx < v.Len() {
-					return getRef(v.Index(idx), tail)
+				if setting && v.Kind() == reflect.Slice && idx == v.Len() {
+					// allow expanding slices by one each time
+					if idx >= v.Cap() {
+						v.Grow(1)
+					}
+					v.SetLen(idx + 1)
 				}
-			}
-		case reflect.Struct:
-			tp := v.Type()
-			for i := 0; i < tp.NumField(); i++ {
-				if matchField(tp.Field(i), elem) {
-					f := v.Field(i)
-					return getRef(f, tail)
+				if idx >= 0 && idx < v.Len() {
+					return getRef(v.Index(idx), tail, setting)
 				}
 			}
 		case reflect.Map:
@@ -45,17 +44,25 @@ func getRef(obj reflect.Value, jspath string) (v reflect.Value, mapkey reflect.V
 			for iter.Next() {
 				if iter.Key().String() == elem {
 					if tail == "" {
-						mapkey = iter.Key()
+						index = iter.Key()
 						return
 					}
-					return getRef(iter.Value(), tail)
+					return getRef(iter.Value(), tail, setting)
 				}
 			}
-		case reflect.Pointer, reflect.Interface:
+		case reflect.Interface, reflect.Pointer:
 			if !(v.Kind() != reflect.Pointer && v.Type().Name() != "" && v.CanAddr()) {
 				v = v.Elem()
 			}
-			return getRef(v, jspath)
+			return getRef(v, jspath, setting)
+		case reflect.Struct:
+			tp := v.Type()
+			for i := 0; i < tp.NumField(); i++ {
+				if matchField(tp.Field(i), elem) {
+					f := v.Field(i)
+					return getRef(f, tail, setting)
+				}
+			}
 		}
 		err = errors.Join(err, errPathNotFound{elem, v.Type().String()})
 	}
@@ -65,7 +72,7 @@ func getRef(obj reflect.Value, jspath string) (v reflect.Value, mapkey reflect.V
 func Get(obj any, jspath string) (val any, err error) {
 	var mk reflect.Value
 	rv := reflect.ValueOf(obj)
-	if rv, mk, err = getRef(rv, jspath); err == nil {
+	if rv, mk, err = getRef(rv, jspath, false); err == nil {
 		if mk.IsValid() {
 			rv = rv.MapIndex(mk)
 		}
@@ -76,15 +83,18 @@ func Get(obj any, jspath string) (val any, err error) {
 
 func Set(obj any, jspath string, val any) (err error) {
 	var mk reflect.Value
+	err = ErrInvalidReceiver
 	rv := reflect.ValueOf(obj)
-	if rv, mk, err = getRef(rv, jspath); err == nil {
-		if mk.IsValid() {
-			rv.SetMapIndex(mk, reflect.ValueOf(val))
-		} else {
-			if !rv.CanAddr() {
-				rv = rv.Elem()
+	if rv.Kind() == reflect.Pointer && !rv.IsNil() {
+		if rv, mk, err = getRef(rv, jspath, true); err == nil {
+			if mk.IsValid() {
+				rv.SetMapIndex(mk, reflect.ValueOf(val))
+			} else {
+				if !rv.CanAddr() {
+					rv = rv.Elem()
+				}
+				rv.Set(reflect.ValueOf(val))
 			}
-			rv.Set(reflect.ValueOf(val))
 		}
 	}
 	return

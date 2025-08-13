@@ -250,6 +250,15 @@ func TestSet_intArray(t *testing.T) {
 	}
 }
 
+func TestSet_intArrayExpand(t *testing.T) {
+	x := []int{1, 2, 3}
+	err := jq.Set(&x, "3", 4)
+	maybeError(t, err)
+	if !reflect.DeepEqual(x, []int{1, 2, 3, 4}) {
+		t.Error(x)
+	}
+}
+
 func TestSet_structField(t *testing.T) {
 	var x testType = testStructVal
 	err := jq.Set(&x, "sX", "foo!")
