@@ -356,3 +356,14 @@ func TestGetAsTypeMismatch(t *testing.T) {
 		t.Error(x)
 	}
 }
+
+func TestSetTypeMismatch(t *testing.T) {
+	x := testStructVal
+	err := jq.Set(&x, "N", "foo")
+	if !errors.Is(err, jq.ErrTypeMismatch) {
+		t.Fatal(err)
+	}
+	if x := err.Error(); x != "jq: expected int, not string" {
+		t.Error(x)
+	}
+}
