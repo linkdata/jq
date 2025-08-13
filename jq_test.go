@@ -189,7 +189,6 @@ func TestGet_structValFieldTagIGN(t *testing.T) {
 	if !errors.Is(err, jq.ErrPathNotFound) {
 		t.Error(err)
 	}
-	t.Log(err)
 }
 
 func TestGet_intArrayOutOfBounds(t *testing.T) {
@@ -208,7 +207,7 @@ func TestGet_intArrayNotNumber(t *testing.T) {
 }
 
 func TestGet_structValPath(t *testing.T) {
-	v, err := jq.Get(testStructVal, "sa.1.sa.0.sX")
+	v, err := jq.Get(testStructVal, "SA.1.SA.0.sX")
 	maybeError(t, err)
 	if !reflect.DeepEqual(v, testStructVal.SA[1].SA[0].S_X) {
 		t.Error(v)
@@ -216,7 +215,7 @@ func TestGet_structValPath(t *testing.T) {
 }
 
 func TestGet_structPtrPath(t *testing.T) {
-	v, err := jq.Get(&testStructVal, "pa.1.pa.0.sX")
+	v, err := jq.Get(&testStructVal, "PA.1.PA.0.sX")
 	maybeError(t, err)
 	if !reflect.DeepEqual(v, testStructVal.PA[1].PA[0].S_X) {
 		t.Error(v)
@@ -337,5 +336,23 @@ func TestSet_mapMapInt(t *testing.T) {
 
 	if !reflect.DeepEqual(33, got) {
 		t.Error(got)
+	}
+}
+
+func TestGetAs(t *testing.T) {
+	x, err := jq.GetAs[int](testStructVal, "N")
+	maybeError(t, err)
+	if x != testStructVal.N {
+		t.Error(x)
+	}
+}
+
+func TestGetAsTypeMismatch(t *testing.T) {
+	_, err := jq.GetAs[int](testStructVal, "S")
+	if !errors.Is(err, jq.ErrTypeMismatch) {
+		t.Fatal(err)
+	}
+	if x := err.Error(); x != "jq: expected int, not string" {
+		t.Error(x)
 	}
 }

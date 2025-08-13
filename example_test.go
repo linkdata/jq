@@ -1,14 +1,4 @@
-[![build](https://github.com/linkdata/jq/actions/workflows/build.yml/badge.svg)](https://github.com/linkdata/jq/actions/workflows/build.yml)
-[![coverage](https://coveralls.io/repos/github/linkdata/jq/badge.svg?branch=main)](https://coveralls.io/github/linkdata/jq?branch=main)
-[![goreport](https://goreportcard.com/badge/github.com/linkdata/jq)](https://goreportcard.com/report/github.com/linkdata/jq)
-[![Docs](https://godoc.org/github.com/linkdata/jq?status.svg)](https://godoc.org/github.com/linkdata/jq)
-
-# jq
-
-Go JSON structure query path getter/setter
-
-```go
-package main
+package jq_test
 
 import (
 	"encoding/json"
@@ -43,7 +33,7 @@ type Person struct {
 	Address   Address  `json:"address"`
 }
 
-func main() {
+func Example() {
 	var person Person
 	var err error
 	if err = json.Unmarshal([]byte(rawJson), &person); err == nil {
@@ -63,4 +53,3 @@ func main() {
 	// reading
 	// Anytown
 }
-```

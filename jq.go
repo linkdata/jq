@@ -17,7 +17,7 @@ func matchField(f reflect.StructField, want string) (yes bool) {
 			name = tag
 		}
 	}
-	return strings.EqualFold(name, want)
+	return name == want
 }
 
 func getRef(obj reflect.Value, jspath string, setting bool) (v reflect.Value, index reflect.Value, err error) {
@@ -65,6 +65,17 @@ func getRef(obj reflect.Value, jspath string, setting bool) (v reflect.Value, in
 			}
 		}
 		err = errors.Join(err, errPathNotFound{elem, v.Type().String()})
+	}
+	return
+}
+
+func GetAs[T any](obj any, jspath string) (val T, err error) {
+	var x any
+	if x, err = Get(obj, jspath); err == nil {
+		var ok bool
+		if val, ok = x.(T); !ok {
+			err = errTypeMismatch{val, x}
+		}
 	}
 	return
 }
