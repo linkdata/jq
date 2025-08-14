@@ -27,6 +27,16 @@ func assignable(from, into reflect.Value) (err error) {
 	return
 }
 
+func isNumber(k reflect.Kind) bool {
+	switch k {
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int,
+		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint,
+		reflect.Float32, reflect.Float64:
+		return true
+	}
+	return false
+}
+
 func assign(from, into reflect.Value) (err error) {
 	if err = assignable(from, into); err == nil {
 		into.Set(from)
@@ -47,6 +57,13 @@ func assign(from, into reflect.Value) (err error) {
 					}
 				}
 			}
+		}
+	}
+	if isNumber(from.Kind()) && isNumber(into.Kind()) {
+		if from.Type().ConvertibleTo(into.Type()) {
+			err = nil
+			from = from.Convert(into.Type())
+			into.Set(from)
 		}
 	}
 	return

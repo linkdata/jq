@@ -376,6 +376,13 @@ func TestSetRootStructMapWrongType(t *testing.T) {
 	}
 }
 
+func TestSetNumberConversion(t *testing.T) {
+	var x int
+	err := jq.Set(&x, "", 1.1)
+	maybeError(t, err)
+	mustEqual(t, x, 1)
+}
+
 func TestConvert(t *testing.T) {
 	type A struct {
 		S string
