@@ -41,9 +41,7 @@ func assign(from, into reflect.Value) (err error) {
 				keystring := iter.Key().String()
 				for i := range tp.NumField() {
 					if matchField(tp.Field(i), keystring) {
-						v := iter.Value().Elem()
-						f := into.Field(i)
-						if err = assign(v, f); err != nil {
+						if err = assign(iter.Value().Elem(), into.Field(i)); err != nil {
 							return
 						}
 					}
