@@ -27,8 +27,11 @@ func assignable(from, into reflect.Value) (err error) {
 	return
 }
 
-func mapassign(preerr error, from, into reflect.Value) (err error) {
-	err = preerr
+func assign(from, into reflect.Value) (err error) {
+	if err = assignable(from, into); err == nil {
+		into.Set(from)
+		return
+	}
 	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
 		err = nil
 		tp := into.Type()
@@ -40,9 +43,7 @@ func mapassign(preerr error, from, into reflect.Value) (err error) {
 					if matchField(tp.Field(i), keystring) {
 						v := iter.Value().Elem()
 						f := into.Field(i)
-						if err = assignable(v, f); err == nil {
-							f.Set(v)
-						} else if err = mapassign(err, v, f); err != nil {
+						if err = assign(v, f); err != nil {
 							return
 						}
 					}
@@ -61,11 +62,7 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 			if !v.CanAddr() {
 				v = v.Elem()
 			}
-			if err = assignable(setting, v); err == nil {
-				v.Set(setting)
-			} else {
-				err = mapassign(err, setting, v)
-			}
+			err = assign(setting, v)
 		}
 		return
 	}
