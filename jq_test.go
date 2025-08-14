@@ -11,16 +11,17 @@ import (
 )
 
 type testType struct {
-	S    string
-	N    int
-	IA   []int
-	P    *testType
-	Pnil *testType
-	PA   []*testType
-	SA   []testType
-	M    map[string]any
-	S_X  string `json:"sX"`
-	IGN  int    `json:"-"`
+	S     string
+	I     int
+	AI    []int
+	T     *testType
+	PT    *testType
+	PTnil *testType
+	APT   []*testType
+	AT    []testType
+	M     map[string]any
+	S_X   string `json:"sX"`
+	IGN   int    `json:"-"`
 }
 
 var testInt = 1
@@ -29,22 +30,23 @@ var testIntArray = []int{1, 2, 3}
 var testStringMatrix = [][]string{{"0.0", "0.1", "0.2"}, {"1.0", "1.1", "1.2"}, {"2.0", "2.1", "2.2"}}
 var testStructVal = testType{
 	S:  "string",
-	N:  1,
-	IA: testIntArray,
-	P:  &testType{S: "p"},
-	PA: []*testType{
+	I:  1,
+	AI: testIntArray,
+	T:  &testType{},
+	PT: &testType{S: "PT_S"},
+	APT: []*testType{
 		{S: "PA.0"},
 		{S: "PA.1",
-			PA: []*testType{
+			APT: []*testType{
 				{S: "PA.1.0"},
 				{S: "PA.1.1"},
 			},
 		},
 	},
-	SA: []testType{
+	AT: []testType{
 		{S: "SA.0"},
 		{S: "SA.1",
-			SA: []testType{
+			AT: []testType{
 				{S: "SA.1.0"},
 				{S: "SA.1.1"},
 			},
@@ -146,15 +148,15 @@ func TestGet_structPtrField(t *testing.T) {
 }
 
 func TestGet_structPtrPtr(t *testing.T) {
-	v, err := jq.Get(&testStructVal, "P")
+	v, err := jq.Get(&testStructVal, "PT")
 	maybeError(t, err)
-	mustEqual(t, v, testStructVal.P)
+	mustEqual(t, v, testStructVal.PT)
 }
 
 func TestGet_structValPtrString(t *testing.T) {
-	v, err := jq.Get(&testStructVal, "P.S")
+	v, err := jq.Get(&testStructVal, "PT.S")
 	maybeError(t, err)
-	mustEqual(t, v, testStructVal.P.S)
+	mustEqual(t, v, testStructVal.PT.S)
 }
 
 func TestGet_structValFieldTag(t *testing.T) {
@@ -188,15 +190,15 @@ func TestGet_intArrayNotNumber(t *testing.T) {
 }
 
 func TestGet_structValPath(t *testing.T) {
-	v, err := jq.Get(&testStructVal, "SA.1.SA.0.sX")
+	v, err := jq.Get(&testStructVal, "AT.1.AT.0.sX")
 	maybeError(t, err)
-	mustEqual(t, v, testStructVal.SA[1].SA[0].S_X)
+	mustEqual(t, v, testStructVal.AT[1].AT[0].S_X)
 }
 
 func TestGet_structPtrPath(t *testing.T) {
-	v, err := jq.Get(&testStructVal, "PA.1.PA.0.sX")
+	v, err := jq.Get(&testStructVal, "APT.1.APT.0.sX")
 	maybeError(t, err)
-	mustEqual(t, v, testStructVal.PA[1].PA[0].S_X)
+	mustEqual(t, v, testStructVal.APT[1].APT[0].S_X)
 }
 
 func TestSet_int(t *testing.T) {
@@ -236,16 +238,16 @@ func TestSet_structField(t *testing.T) {
 
 func TestSet_structValArrayField(t *testing.T) {
 	var x testType = testStructVal
-	err := jq.Set(&x, "SA.0.S", "foo!")
+	err := jq.Set(&x, "AT.0.S", "foo!")
 	maybeError(t, err)
-	mustEqual(t, x.SA[0].S, "foo!")
+	mustEqual(t, x.AT[0].S, "foo!")
 }
 
 func TestSet_structPrtArrayField(t *testing.T) {
 	var x testType = testStructVal
-	err := jq.Set(&x, "PA.1.S", "foo!")
+	err := jq.Set(&x, "APT.1.S", "foo!")
 	maybeError(t, err)
-	mustEqual(t, x.PA[1].S, "foo!")
+	mustEqual(t, x.APT[1].S, "foo!")
 }
 
 func TestGet_map(t *testing.T) {
@@ -292,9 +294,9 @@ func TestSet_mapMapInt(t *testing.T) {
 }
 
 func TestGetAs(t *testing.T) {
-	x, err := jq.GetAs[int](testStructVal, "N")
+	x, err := jq.GetAs[int](testStructVal, "I")
 	maybeError(t, err)
-	if x != testStructVal.N {
+	if x != testStructVal.I {
 		t.Error(x)
 	}
 }
@@ -311,7 +313,7 @@ func TestGetAsTypeMismatch(t *testing.T) {
 
 func TestSetTypeMismatch(t *testing.T) {
 	x := testStructVal
-	err := jq.Set(&x, "N", "foo")
+	err := jq.Set(&x, "I", "foo")
 	if !errors.Is(err, jq.ErrTypeMismatch) {
 		t.Fatal(err)
 	}
@@ -321,6 +323,15 @@ func TestSetTypeMismatch(t *testing.T) {
 }
 
 func TestSetAcceptsGet(t *testing.T) {
+	x := testStructVal
+	y, err := jq.Get(x, "")
+	maybeError(t, err)
+	err = jq.Set(&x, "", y)
+	maybeError(t, err)
+	mustEqual(t, x, y)
+}
+
+func TestSetStructAcceptsMap(t *testing.T) {
 	x := testStructVal
 	y, err := jq.Get(x, "")
 	maybeError(t, err)
