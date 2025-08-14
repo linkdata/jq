@@ -382,25 +382,3 @@ func TestSetNumberConversion(t *testing.T) {
 	maybeError(t, err)
 	mustEqual(t, x, 1)
 }
-
-func TestConvert(t *testing.T) {
-	type A struct {
-		S string
-	}
-	var a A
-	mp := map[string]any{"S": "foo"}
-
-	av := reflect.ValueOf(&a)
-	bv := reflect.ValueOf(mp)
-	v := av
-	if !v.CanAddr() {
-		v = v.Elem()
-	}
-	iter := bv.MapRange()
-	for iter.Next() {
-		if iter.Key().String() == "S" {
-			f := v.Field(0)
-			f.Set(iter.Value().Elem())
-		}
-	}
-}
