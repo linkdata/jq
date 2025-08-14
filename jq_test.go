@@ -10,11 +10,15 @@ import (
 	"github.com/linkdata/jq"
 )
 
+type testSubType struct {
+	S string
+}
+
 type testType struct {
 	S     string
 	I     int
 	AI    []int
-	T     *testType
+	T     testSubType
 	PT    *testType
 	PTnil *testType
 	APT   []*testType
@@ -32,7 +36,7 @@ var testStructVal = testType{
 	S:  "string",
 	I:  1,
 	AI: testIntArray,
-	T:  &testType{},
+	T:  testSubType{S: "T_S"},
 	PT: &testType{S: "PT_S"},
 	APT: []*testType{
 		{S: "PA.0"},
@@ -74,7 +78,7 @@ func maybeError(t *testing.T, err error) {
 func mustEqual(t *testing.T, a, b any) {
 	t.Helper()
 	if !reflect.DeepEqual(a, b) {
-		t.Errorf(" got %T %#v\nwant %T %#v\n", a, a, b, b)
+		t.Errorf("not equal\n got %T %#v\nwant %T %#v\n", a, a, b, b)
 	}
 }
 
@@ -123,16 +127,28 @@ func TestGet_stringMatrixIndex(t *testing.T) {
 	}
 }
 
-func TestGet_structVal(t *testing.T) {
+func TestGet_rootStructVal(t *testing.T) {
 	v, err := jq.Get(testStructVal, "")
 	maybeError(t, err)
 	mustEqual(t, v, testStructVal)
 }
 
-func TestGet_structPtr(t *testing.T) {
+func TestGet_fieldStructVal(t *testing.T) {
+	v, err := jq.Get(testStructVal, "T")
+	maybeError(t, err)
+	mustEqual(t, v, testStructVal.T)
+}
+
+func TestGet_rootStructPtr(t *testing.T) {
 	v, err := jq.Get(&testStructVal, "")
 	maybeError(t, err)
 	mustEqual(t, v, &testStructVal)
+}
+
+func TestGet_fieldStructPtr(t *testing.T) {
+	v, err := jq.Get(&testStructVal, "T")
+	maybeError(t, err)
+	mustEqual(t, v, testStructVal.T)
 }
 
 func TestGet_structValField(t *testing.T) {
@@ -331,11 +347,53 @@ func TestSetAcceptsGet(t *testing.T) {
 	mustEqual(t, x, y)
 }
 
-func TestSetStructAcceptsMap(t *testing.T) {
+func TestSetRootStructAcceptsMap(t *testing.T) {
+	var x testSubType
+	err := jq.Set(&x, "", map[string]any{"S": "foo"})
+	maybeError(t, err)
+	mustEqual(t, x, testSubType{S: "foo"})
+}
+
+func TestSetFieldStructAcceptsMap(t *testing.T) {
 	x := testStructVal
-	y, err := jq.Get(x, "")
+	err := jq.Set(&x, "T", map[string]any{"S": "foo!"})
 	maybeError(t, err)
-	err = jq.Set(&x, "", y)
+	mustEqual(t, x.T, testSubType{S: "foo!"})
+}
+
+func TestSetRootStructAcceptsNestedMap(t *testing.T) {
+	x := testStructVal
+	err := jq.Set(&x, "", map[string]any{"T": map[string]any{"S": "foo!"}})
 	maybeError(t, err)
-	mustEqual(t, x, y)
+	mustEqual(t, x.T, testSubType{S: "foo!"})
+}
+
+func TestSetRootStructMapWrongType(t *testing.T) {
+	var x testSubType
+	err := jq.Set(&x, "", map[string]any{"S": 1})
+	if !errors.Is(err, jq.ErrTypeMismatch) {
+		t.Error(err)
+	}
+}
+
+func TestConvert(t *testing.T) {
+	type A struct {
+		S string
+	}
+	var a A
+	mp := map[string]any{"S": "foo"}
+
+	av := reflect.ValueOf(&a)
+	bv := reflect.ValueOf(mp)
+	v := av
+	if !v.CanAddr() {
+		v = v.Elem()
+	}
+	iter := bv.MapRange()
+	for iter.Next() {
+		if iter.Key().String() == "S" {
+			f := v.Field(0)
+			f.Set(iter.Value().Elem())
+		}
+	}
 }

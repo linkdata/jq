@@ -27,6 +27,32 @@ func assignable(from, into reflect.Value) (err error) {
 	return
 }
 
+func mapassign(preerr error, from, into reflect.Value) (err error) {
+	err = preerr
+	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
+		err = nil
+		tp := into.Type()
+		iter := from.MapRange()
+		for iter.Next() {
+			if iter.Key().Kind() == reflect.String {
+				keystring := iter.Key().String()
+				for i := range tp.NumField() {
+					if matchField(tp.Field(i), keystring) {
+						v := iter.Value().Elem()
+						f := into.Field(i)
+						if err = assignable(v, f); err == nil {
+							f.Set(v)
+						} else if err = mapassign(err, v, f); err != nil {
+							return
+						}
+					}
+				}
+			}
+		}
+	}
+	return
+}
+
 func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.Value, err error) {
 	v = obj
 	elem, tail, _ := strings.Cut(jspath, ".")
@@ -37,6 +63,8 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 			}
 			if err = assignable(setting, v); err == nil {
 				v.Set(setting)
+			} else {
+				err = mapassign(err, setting, v)
 			}
 		}
 		return
@@ -106,7 +134,11 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 func Get(obj any, jspath string) (val any, err error) {
 	rv := reflect.ValueOf(obj)
 	if rv, err = getSet(rv, jspath, reflect.Value{}); err == nil {
-		val = rv.Interface()
+		err = ErrPathNotFound
+		if rv.CanInterface() {
+			val = rv.Interface()
+			err = nil
+		}
 	}
 	return
 }
