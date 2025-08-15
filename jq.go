@@ -37,9 +37,11 @@ func isNumber(k reflect.Kind) bool {
 	return false
 }
 
-func assign(from, into reflect.Value) (err error) {
+func assign(from, into reflect.Value) (changed bool, err error) {
 	if err = assignable(from, into); err == nil {
-		into.Set(from)
+		if changed = !reflect.DeepEqual(into.Interface(), from.Interface()); changed {
+			into.Set(from)
+		}
 		return
 	}
 	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
@@ -51,9 +53,11 @@ func assign(from, into reflect.Value) (err error) {
 				keystring := iter.Key().String()
 				for i := range tp.NumField() {
 					if matchField(tp.Field(i), keystring) {
-						if err = assign(iter.Value().Elem(), into.Field(i)); err != nil {
+						var change bool
+						if change, err = assign(iter.Value().Elem(), into.Field(i)); err != nil {
 							return
 						}
+						changed = changed || change
 					}
 				}
 			}
@@ -62,14 +66,16 @@ func assign(from, into reflect.Value) (err error) {
 	if isNumber(from.Kind()) && isNumber(into.Kind()) {
 		if from.Type().ConvertibleTo(into.Type()) {
 			err = nil
-			from = from.Convert(into.Type())
-			into.Set(from)
+			converted := from.Convert(into.Type())
+			if changed = !into.Equal(converted); changed {
+				into.Set(converted)
+			}
 		}
 	}
 	return
 }
 
-func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.Value, err error) {
+func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.Value, changed bool, err error) {
 	v = obj
 	elem, tail, _ := strings.Cut(jspath, ".")
 	if elem == "" {
@@ -77,7 +83,7 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 			if !v.CanAddr() {
 				v = v.Elem()
 			}
-			err = assign(setting, v)
+			changed, err = assign(setting, v)
 		}
 		return
 	}
@@ -103,8 +109,12 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 				if tail == "" {
 					if setting.IsValid() {
 						if err = assignable(setting, iter.Value()); err == nil {
-							v.SetMapIndex(iter.Key(), setting)
-							v = setting
+							var change bool
+							if change = !reflect.DeepEqual(v.MapIndex(iter.Key()).Interface(), setting.Interface()); change {
+								v.SetMapIndex(iter.Key(), setting)
+								v = setting
+								changed = true
+							}
 						}
 					} else {
 						v = v.MapIndex(iter.Key())
@@ -145,7 +155,7 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 
 func Get(obj any, jspath string) (val any, err error) {
 	rv := reflect.ValueOf(obj)
-	if rv, err = getSet(rv, jspath, reflect.Value{}); err == nil {
+	if rv, _, err = getSet(rv, jspath, reflect.Value{}); err == nil {
 		err = ErrPathNotFound
 		if rv.CanInterface() {
 			val = rv.Interface()
@@ -155,11 +165,11 @@ func Get(obj any, jspath string) (val any, err error) {
 	return
 }
 
-func Set(obj any, jspath string, val any) (err error) {
+func Set(obj any, jspath string, val any) (changed bool, err error) {
 	err = ErrInvalidReceiver
 	rv := reflect.ValueOf(obj)
 	if rv.Kind() == reflect.Pointer && !rv.IsNil() {
-		_, err = getSet(rv, jspath, reflect.ValueOf(val))
+		_, changed, err = getSet(rv, jspath, reflect.ValueOf(val))
 	}
 	return
 }

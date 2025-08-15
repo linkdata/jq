@@ -12,6 +12,7 @@ import (
 
 type testSubType struct {
 	S string
+	I int
 }
 
 type testType struct {
@@ -219,50 +220,57 @@ func TestGet_structPtrPath(t *testing.T) {
 
 func TestSet_int(t *testing.T) {
 	var x int
-	err := jq.Set(&x, "", 2)
+	changed, err := jq.Set(&x, "", 2)
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x, 2)
 }
 
 func TestSet_string(t *testing.T) {
 	var x string
-	err := jq.Set(&x, "", "foo")
+	changed, err := jq.Set(&x, "", "foo")
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x, "foo")
 }
 
 func TestSet_intArray(t *testing.T) {
 	x := []int{1, 2, 3}
-	err := jq.Set(&x, "1", 4)
+	changed, err := jq.Set(&x, "1", 4)
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x, []int{1, 4, 3})
 }
 
 func TestSet_intArrayExpand(t *testing.T) {
 	x := []int{1, 2, 3}
-	err := jq.Set(&x, "3", 4)
+	changed, err := jq.Set(&x, "3", 4)
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x, []int{1, 2, 3, 4})
 }
 
 func TestSet_structField(t *testing.T) {
 	var x testType = testStructVal
-	err := jq.Set(&x, "sX", "foo!")
+	changed, err := jq.Set(&x, "sX", "foo!")
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x.S_X, "foo!")
 }
 
 func TestSet_structValArrayField(t *testing.T) {
 	var x testType = testStructVal
-	err := jq.Set(&x, "AT.0.S", "foo!")
+	changed, err := jq.Set(&x, "AT.0.S", "foo!")
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x.AT[0].S, "foo!")
 }
 
 func TestSet_structPrtArrayField(t *testing.T) {
 	var x testType = testStructVal
-	err := jq.Set(&x, "APT.1.S", "foo!")
+	changed, err := jq.Set(&x, "APT.1.S", "foo!")
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x.APT[1].S, "foo!")
 }
 
@@ -295,15 +303,17 @@ func TestGet_mapMapStringNotFound(t *testing.T) {
 
 func TestSet_mapInt(t *testing.T) {
 	x := testStructVal
-	err := jq.Set(&x, "M.MI", 3)
+	changed, err := jq.Set(&x, "M.MI", 3)
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x.M["MI"], 3)
 }
 
 func TestSet_mapMapInt(t *testing.T) {
 	x := testStructVal
-	err := jq.Set(&x, "M.MM.MMI", 33)
+	changed, err := jq.Set(&x, "M.MM.MMI", 33)
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	got, err := jq.Get(x, "M.MM.MMI")
 	maybeError(t, err)
 	mustEqual(t, got, 33)
@@ -329,7 +339,8 @@ func TestGetAsTypeMismatch(t *testing.T) {
 
 func TestSetTypeMismatch(t *testing.T) {
 	x := testStructVal
-	err := jq.Set(&x, "I", "foo")
+	changed, err := jq.Set(&x, "I", "foo")
+	mustEqual(t, changed, false)
 	if !errors.Is(err, jq.ErrTypeMismatch) {
 		t.Fatal(err)
 	}
@@ -342,35 +353,40 @@ func TestSetAcceptsGet(t *testing.T) {
 	x := testStructVal
 	y, err := jq.Get(x, "")
 	maybeError(t, err)
-	err = jq.Set(&x, "", y)
+	changed, err := jq.Set(&x, "", y)
 	maybeError(t, err)
+	mustEqual(t, changed, false)
 	mustEqual(t, x, y)
 }
 
 func TestSetRootStructAcceptsMap(t *testing.T) {
 	var x testSubType
-	err := jq.Set(&x, "", map[string]any{"S": "foo"})
+	changed, err := jq.Set(&x, "", map[string]any{"S": "foo"})
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x, testSubType{S: "foo"})
 }
 
 func TestSetFieldStructAcceptsMap(t *testing.T) {
 	x := testStructVal
-	err := jq.Set(&x, "T", map[string]any{"S": "foo!"})
+	changed, err := jq.Set(&x, "T", map[string]any{"S": "foo!"})
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x.T, testSubType{S: "foo!"})
 }
 
 func TestSetRootStructAcceptsNestedMap(t *testing.T) {
 	x := testStructVal
-	err := jq.Set(&x, "", map[string]any{"T": map[string]any{"S": "foo!"}})
+	changed, err := jq.Set(&x, "", map[string]any{"T": map[string]any{"S": "foo!"}})
 	maybeError(t, err)
+	mustEqual(t, changed, true)
 	mustEqual(t, x.T, testSubType{S: "foo!"})
 }
 
 func TestSetRootStructMapWrongType(t *testing.T) {
 	var x testSubType
-	err := jq.Set(&x, "", map[string]any{"S": 1})
+	changed, err := jq.Set(&x, "", map[string]any{"S": 1})
+	mustEqual(t, changed, false)
 	if !errors.Is(err, jq.ErrTypeMismatch) {
 		t.Error(err)
 	}
@@ -378,7 +394,62 @@ func TestSetRootStructMapWrongType(t *testing.T) {
 
 func TestSetNumberConversion(t *testing.T) {
 	var x int
-	err := jq.Set(&x, "", 1.1)
+	changed, err := jq.Set(&x, "", 1.1)
+	mustEqual(t, changed, true)
 	maybeError(t, err)
 	mustEqual(t, x, 1)
+
+	changed, err = jq.Set(&x, "", 1.2)
+	mustEqual(t, changed, false)
+	maybeError(t, err)
+	mustEqual(t, x, 1)
+}
+
+func TestSetChangedSubInt(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, "T.I", 32)
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.T.I, 32)
+
+	changed, err = jq.Set(&x, "T.I", 32)
+	maybeError(t, err)
+	mustEqual(t, changed, false)
+	mustEqual(t, x.T.I, 32)
+}
+
+func TestSetChangedStruct(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, "T", map[string]any{"S": "foo!"})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.T, testSubType{S: "foo!"})
+
+	changed, err = jq.Set(&x, "T", testSubType{S: "foo!"})
+	maybeError(t, err)
+	mustEqual(t, changed, false)
+	mustEqual(t, x.T, testSubType{S: "foo!"})
+
+	changed, err = jq.Set(&x, "T", map[string]any{"S": "foo!"})
+	maybeError(t, err)
+	mustEqual(t, changed, false)
+	mustEqual(t, x.T, testSubType{S: "foo!"})
+
+	changed, err = jq.Set(&x, "T", testSubType{S: "foo!", I: 12})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.T, testSubType{S: "foo!", I: 12})
+
+	changed, err = jq.Set(&x, "T", map[string]any{"S": "foo?", "I": 12})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.T, testSubType{S: "foo?", I: 12})
+}
+
+func TestSetRootStructMapSecondItem(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, "T", map[string]any{"S": x.T.S, "I": 34})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.T.I, 34)
 }
