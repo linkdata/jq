@@ -1,5 +1,5 @@
 [![build](https://github.com/linkdata/jq/actions/workflows/build.yml/badge.svg)](https://github.com/linkdata/jq/actions/workflows/build.yml)
-[![coverage](https://github.com/linkdata/jq/blob/badges/main/badge.svg)](https://github.com/linkdata/jq/blob/badges/main/coverage.html)
+[![coverage](https://github.com/linkdata/jq/blob/badges/main/badge.svg)](https://htmlpreview.github.io/?https://github.com/linkdata/jq/blob/badges/main/coverage.html)
 [![goreport](https://goreportcard.com/badge/github.com/linkdata/jq)](https://goreportcard.com/report/github.com/linkdata/jq)
 [![Docs](https://godoc.org/github.com/linkdata/jq?status.svg)](https://godoc.org/github.com/linkdata/jq)
 
