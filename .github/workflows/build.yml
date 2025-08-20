@@ -58,8 +58,7 @@ jobs:
       # To create the 'badges' branch for the repository:
       #
       #  git checkout BRANCH
-      #  git checkout --orphan badges && git rm --cached $(git ls-files)
-      #  echo '# Badges branch' > README.md
+      #  git checkout --orphan badges && git rm --cached $(git ls-files) && echo '# Badges branch' > README.md
       #  git add README.md && git commit -m 'Add dedicated README' && git push origin badges
       #  git checkout --force BRANCH
 
