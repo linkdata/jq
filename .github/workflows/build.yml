@@ -49,7 +49,7 @@ jobs:
       # Generate code coverage badge and push it to the 'badges' branch.
       # Reference it in your README.md like this:
       #
-      #  [![coverage](https://github.com/USERNAME/REPO/blob/badges/BRANCH/badge.svg)](https://github.com/USERNAME/REPO/blob/badges/BRANCH/coverage.html)
+      #  [![coverage](https://github.com/USERNAME/REPO/blob/badges/BRANCH/badge.svg)](#)
       #
       # If you have a detailed HTML report of the coverage (here called coverage.html), replace the '#' with:
       #
