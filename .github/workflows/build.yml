@@ -60,12 +60,12 @@ jobs:
       #   permissions:
       #     contents: write
       #
-      # To create the 'coverage' branch for the repository:
+      # To create the 'coverage' branch for the repository (replace 'main' with the branch you want to publish for):
       #
-      #  git checkout BRANCH
+      #  git checkout main
       #  git checkout --orphan coverage && git rm --cached $(git ls-files) && echo '# Coverage branch' > README.md
       #  git add README.md && git commit -m 'Add README.md' && git push origin coverage
-      #  git checkout --force BRANCH
+      #  git checkout --force main
       - name: Extract branch name
         run: echo "BRANCH=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
         id: extract_branch
@@ -94,7 +94,8 @@ jobs:
           status: ${{ steps.coverage.outputs.coverage }}%
           path: coverage/${{ steps.extract_branch.outputs.branch }}/badge.svg
           color: ${{
-                steps.coverage.outputs.coverage > 90 && 'green'              ||
+                steps.coverage.outputs.coverage > 95 && 'green'              ||
+                steps.coverage.outputs.coverage > 90 && 'yellow,green,green' ||
                 steps.coverage.outputs.coverage > 80 && 'yellow,green'       ||
                 steps.coverage.outputs.coverage > 70 && 'yellow'             ||
                 steps.coverage.outputs.coverage > 60 && 'orange,yellow'      ||
