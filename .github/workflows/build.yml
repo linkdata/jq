@@ -107,7 +107,7 @@ jobs:
         env:
           BRANCH: ${{ steps.extract_branch.outputs.branch }}
         run: |
-          pushd badges
+          pushd coverage
               git config --local user.email "action@github.com"
               git config --local user.name "GitHub Action"
               test ! -f "${BRANCH}/badge.svg" || git add "${BRANCH}/badge.svg"
