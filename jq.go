@@ -54,7 +54,29 @@ func assign(from, into reflect.Value) (changed bool, err error) {
 				for i := range tp.NumField() {
 					if matchField(tp.Field(i), keystring) {
 						var change bool
-						if change, err = assign(iter.Value().Elem(), into.Field(i)); err != nil {
+						field := into.Field(i)
+						value := iter.Value()
+						switch value.Kind() {
+						case reflect.Interface:
+							if value.IsNil() {
+								value = reflect.Zero(field.Type())
+							} else {
+								value = value.Elem()
+							}
+						case reflect.Pointer:
+							if field.Kind() == reflect.Pointer {
+								if value.IsNil() {
+									value = reflect.Zero(field.Type())
+								}
+							} else {
+								if value.IsNil() {
+									value = reflect.Zero(field.Type())
+								} else {
+									value = value.Elem()
+								}
+							}
+						}
+						if change, err = assign(value, field); err != nil {
 							return
 						}
 						changed = changed || change
@@ -124,11 +146,23 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 				return getSet(iter.Value(), tail, setting)
 			}
 		}
-	case reflect.Interface, reflect.Pointer:
-		if !(v.Kind() != reflect.Pointer && v.Type().Name() != "" && v.CanAddr()) {
-			v = v.Elem()
+	case reflect.Pointer:
+		if v.IsNil() {
+			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+			return
 		}
-		return getSet(v, jspath, setting)
+		return getSet(v.Elem(), jspath, setting)
+	case reflect.Interface:
+		if v.IsNil() {
+			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+			return
+		}
+		concrete := v.Elem()
+		if setting.IsValid() && jspath != "" && concrete.Kind() == reflect.Struct && !concrete.CanSet() {
+			err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
+			return
+		}
+		return getSet(concrete, jspath, setting)
 	case reflect.Struct:
 		tp := v.Type()
 		for i := 0; i < tp.NumField(); i++ {
