@@ -420,7 +420,7 @@ func TestSetStructAcceptsMapNilInterfaceValue(t *testing.T) {
 
 func TestSetStructAcceptsPointerMapValue(t *testing.T) {
 	x := testStructVal
-	changed, err := jq.Set(&x, "", map[string]*testType{"PT": &testType{S: "ptr"}})
+	changed, err := jq.Set(&x, "", map[string]*testType{"PT": {S: "ptr"}})
 	maybeError(t, err)
 	mustEqual(t, changed, true)
 	if x.PT == nil || x.PT.S != "ptr" {
@@ -437,7 +437,7 @@ func TestSetStructAcceptsPointerMapValue(t *testing.T) {
 
 func TestSetStructAcceptsPointerSourceForStructField(t *testing.T) {
 	x := testStructVal
-	changed, err := jq.Set(&x, "", map[string]*testSubType{"T": &testSubType{S: "ptr struct"}})
+	changed, err := jq.Set(&x, "", map[string]*testSubType{"T": {S: "ptr struct"}})
 	maybeError(t, err)
 	mustEqual(t, changed, true)
 	mustEqual(t, x.T, testSubType{S: "ptr struct"})
