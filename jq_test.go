@@ -218,6 +218,13 @@ func TestGet_structPtrPath(t *testing.T) {
 	mustEqual(t, v, testStructVal.APT[1].APT[0].S_X)
 }
 
+func TestGet_nilPointerPath(t *testing.T) {
+	_, err := jq.Get(&testStructVal, "PTnil.S")
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Errorf("expected ErrPathNotFound, got %v", err)
+	}
+}
+
 func TestSet_int(t *testing.T) {
 	var x int
 	changed, err := jq.Set(&x, "", 2)
@@ -272,6 +279,18 @@ func TestSet_structPrtArrayField(t *testing.T) {
 	maybeError(t, err)
 	mustEqual(t, changed, true)
 	mustEqual(t, x.APT[1].S, "foo!")
+}
+
+func TestSet_nilPointerPath(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, "PTnil.S", "foo!")
+	mustEqual(t, changed, false)
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Errorf("expected ErrPathNotFound, got %v", err)
+	}
+	if x.PTnil != nil {
+		t.Fatalf("expected PTnil to remain nil, got %#v", x.PTnil)
+	}
 }
 
 func TestGet_map(t *testing.T) {
@@ -381,6 +400,110 @@ func TestSetRootStructAcceptsNestedMap(t *testing.T) {
 	maybeError(t, err)
 	mustEqual(t, changed, true)
 	mustEqual(t, x.T, testSubType{S: "foo!"})
+}
+
+func TestSetStructAcceptsTypedMapValues(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, "T", map[string]int{"I": 42})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.T.I, 42)
+}
+
+func TestSetStructAcceptsMapNilInterfaceValue(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, "T", map[string]any{"S": nil})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.T.S, "")
+}
+
+func TestSetStructAcceptsPointerMapValue(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, "", map[string]*testType{"PT": &testType{S: "ptr"}})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	if x.PT == nil || x.PT.S != "ptr" {
+		t.Fatalf("expected pointer value to be set, got %#v", x.PT)
+	}
+
+	changed, err = jq.Set(&x, "", map[string]*testType{"PT": nil})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	if x.PT != nil {
+		t.Fatalf("expected pointer value to be cleared, got %#v", x.PT)
+	}
+}
+
+func TestSetStructAcceptsPointerSourceForStructField(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, "", map[string]*testSubType{"T": &testSubType{S: "ptr struct"}})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.T, testSubType{S: "ptr struct"})
+
+	changed, err = jq.Set(&x, "", map[string]*testSubType{"T": nil})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.T, testSubType{})
+}
+
+func TestGet_interfaceNilPath(t *testing.T) {
+	type container struct {
+		Any any
+	}
+
+	var c container
+	_, err := jq.Get(&c, "Any.S")
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("expected ErrPathNotFound, got %v", err)
+	}
+}
+
+func TestGet_interfaceValuePath(t *testing.T) {
+	type named interface{}
+	type container struct {
+		Named named
+	}
+
+	c := container{Named: testSubType{S: "iface"}}
+	v, err := jq.Get(&c, "Named.S")
+	maybeError(t, err)
+	mustEqual(t, v, "iface")
+}
+
+func TestSet_interfaceValuePathNotSettable(t *testing.T) {
+	type named interface{}
+	type container struct {
+		Named named
+	}
+
+	c := container{Named: testSubType{S: "iface"}}
+	changed, err := jq.Set(&c, "Named.S", "other")
+	mustEqual(t, changed, false)
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("expected ErrPathNotFound, got %v", err)
+	}
+
+	v, err := jq.Get(&c, "Named.S")
+	maybeError(t, err)
+	mustEqual(t, v, "iface")
+}
+
+func TestSet_interfacePointerValue(t *testing.T) {
+	type named interface{}
+	type container struct {
+		Named named
+	}
+
+	c := container{Named: &testSubType{S: "iface"}}
+	changed, err := jq.Set(&c, "Named.S", "other")
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+
+	v, err := jq.Get(&c, "Named.S")
+	maybeError(t, err)
+	mustEqual(t, v, "other")
 }
 
 func TestSetRootStructMapWrongType(t *testing.T) {
