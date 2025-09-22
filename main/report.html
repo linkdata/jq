@@ -174,7 +174,29 @@ func assign(from, into reflect.Value) (changed bool, err error) <span class="cov
                                 for i := range tp.NumField() </span><span class="cov8" title="1">{
                                         if matchField(tp.Field(i), keystring) </span><span class="cov8" title="1">{
                                                 var change bool
-                                                if change, err = assign(iter.Value().Elem(), into.Field(i)); err != nil </span><span class="cov8" title="1">{
+                                                field := into.Field(i)
+                                                value := iter.Value()
+                                                switch value.Kind() </span>{
+                                                case reflect.Interface:<span class="cov8" title="1">
+                                                        if value.IsNil() </span><span class="cov8" title="1">{
+                                                                value = reflect.Zero(field.Type())
+                                                        }</span> else<span class="cov8" title="1"> {
+                                                                value = value.Elem()
+                                                        }</span>
+                                                case reflect.Pointer:<span class="cov8" title="1">
+                                                        if field.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
+                                                                if value.IsNil() </span><span class="cov8" title="1">{
+                                                                        value = reflect.Zero(field.Type())
+                                                                }</span>
+                                                        } else<span class="cov8" title="1"> {
+                                                                if value.IsNil() </span><span class="cov8" title="1">{
+                                                                        value = reflect.Zero(field.Type())
+                                                                }</span> else<span class="cov8" title="1"> {
+                                                                        value = value.Elem()
+                                                                }</span>
+                                                        }
+                                                }
+                                                <span class="cov8" title="1">if change, err = assign(value, field); err != nil </span><span class="cov8" title="1">{
                                                         return
                                                 }</span>
                                                 <span class="cov8" title="1">changed = changed || change</span>
@@ -244,11 +266,23 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
                                 <span class="cov8" title="1">return getSet(iter.Value(), tail, setting)</span>
                         }
                 }
-        case reflect.Interface, reflect.Pointer:<span class="cov8" title="1">
-                if !(v.Kind() != reflect.Pointer &amp;&amp; v.Type().Name() != "" &amp;&amp; v.CanAddr()) </span><span class="cov8" title="1">{
-                        v = v.Elem()
+        case reflect.Pointer:<span class="cov8" title="1">
+                if v.IsNil() </span><span class="cov8" title="1">{
+                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                        return
                 }</span>
-                <span class="cov8" title="1">return getSet(v, jspath, setting)</span>
+                <span class="cov8" title="1">return getSet(v.Elem(), jspath, setting)</span>
+        case reflect.Interface:<span class="cov8" title="1">
+                if v.IsNil() </span><span class="cov8" title="1">{
+                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                        return
+                }</span>
+                <span class="cov8" title="1">concrete := v.Elem()
+                if setting.IsValid() &amp;&amp; jspath != "" &amp;&amp; concrete.Kind() == reflect.Struct &amp;&amp; !concrete.CanSet() </span><span class="cov8" title="1">{
+                        err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
+                        return
+                }</span>
+                <span class="cov8" title="1">return getSet(concrete, jspath, setting)</span>
         case reflect.Struct:<span class="cov8" title="1">
                 tp := v.Type()
                 for i := 0; i &lt; tp.NumField(); i++ </span><span class="cov8" title="1">{
