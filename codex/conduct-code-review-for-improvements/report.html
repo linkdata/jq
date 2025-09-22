@@ -1,0 +1,361 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>jq: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/linkdata/jq/errpathnotfound.go (100.0%)</option>
+				
+				<option value="file1">github.com/linkdata/jq/errtypemismatch.go (100.0%)</option>
+				
+				<option value="file2">github.com/linkdata/jq/jq.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package jq
+
+import "fmt"
+
+// ErrPathNotFound is returned when a JSON path can't be resolved
+var ErrPathNotFound errPathNotFound
+
+type errPathNotFound struct {
+        index   string
+        objtype string
+}
+
+func (e errPathNotFound) Error() string <span class="cov8" title="1">{
+        return fmt.Sprintf("jq: %q not found in %s", e.index, e.objtype)
+}</span>
+
+func (errPathNotFound) Is(other error) bool <span class="cov8" title="1">{
+        return other == ErrPathNotFound
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package jq
+
+import (
+        "fmt"
+        "reflect"
+)
+
+// ErrTypeMismatch is returned when a value does not have the expected type.
+var ErrTypeMismatch errTypeMismatch
+
+type errTypeMismatch struct {
+        expect reflect.Type
+        actual reflect.Type
+}
+
+func (e errTypeMismatch) Error() string <span class="cov8" title="1">{
+        return fmt.Sprintf("jq: expected %s, not %s", e.expect, e.actual)
+}</span>
+
+func (errTypeMismatch) Is(other error) bool <span class="cov8" title="1">{
+        return other == ErrTypeMismatch
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package jq
+
+import (
+        "errors"
+        "reflect"
+        "strconv"
+        "strings"
+)
+
+func matchField(f reflect.StructField, want string) (yes bool) <span class="cov8" title="1">{
+        name := f.Name
+        if tag, ok := f.Tag.Lookup("json"); ok </span><span class="cov8" title="1">{
+                if tag, _, _ = strings.Cut(tag, ","); tag != "" </span><span class="cov8" title="1">{
+                        if tag == "-" </span><span class="cov8" title="1">{
+                                return false
+                        }</span>
+                        <span class="cov8" title="1">name = tag</span>
+                }
+        }
+        <span class="cov8" title="1">return name == want</span>
+}
+
+func assignable(from, into reflect.Value) (err error) <span class="cov8" title="1">{
+        if !from.Type().AssignableTo(into.Type()) </span><span class="cov8" title="1">{
+                err = errTypeMismatch{into.Type(), from.Type()}
+        }</span>
+        <span class="cov8" title="1">return</span>
+}
+
+func isNumber(k reflect.Kind) bool <span class="cov8" title="1">{
+        switch k </span>{
+        case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int,
+                reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint,
+                reflect.Float32, reflect.Float64:<span class="cov8" title="1">
+                return true</span>
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+func assign(from, into reflect.Value) (changed bool, err error) <span class="cov8" title="1">{
+        if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
+                if changed = !reflect.DeepEqual(into.Interface(), from.Interface()); changed </span><span class="cov8" title="1">{
+                        into.Set(from)
+                }</span>
+                <span class="cov8" title="1">return</span>
+        }
+        <span class="cov8" title="1">if from.Kind() == reflect.Map &amp;&amp; into.Kind() == reflect.Struct </span><span class="cov8" title="1">{
+                err = nil
+                tp := into.Type()
+                iter := from.MapRange()
+                for iter.Next() </span><span class="cov8" title="1">{
+                        if iter.Key().Kind() == reflect.String </span><span class="cov8" title="1">{
+                                keystring := iter.Key().String()
+                                for i := range tp.NumField() </span><span class="cov8" title="1">{
+                                        if matchField(tp.Field(i), keystring) </span><span class="cov8" title="1">{
+                                                var change bool
+                                                field := into.Field(i)
+                                                value := iter.Value()
+                                                switch value.Kind() </span>{
+                                                case reflect.Interface:<span class="cov8" title="1">
+                                                        if value.IsNil() </span><span class="cov8" title="1">{
+                                                                value = reflect.Zero(field.Type())
+                                                        }</span> else<span class="cov8" title="1"> {
+                                                                value = value.Elem()
+                                                        }</span>
+                                                case reflect.Pointer:<span class="cov8" title="1">
+                                                        if field.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
+                                                                if value.IsNil() </span><span class="cov8" title="1">{
+                                                                        value = reflect.Zero(field.Type())
+                                                                }</span>
+                                                        } else<span class="cov8" title="1"> {
+                                                                if value.IsNil() </span><span class="cov8" title="1">{
+                                                                        value = reflect.Zero(field.Type())
+                                                                }</span> else<span class="cov8" title="1"> {
+                                                                        value = value.Elem()
+                                                                }</span>
+                                                        }
+                                                }
+                                                <span class="cov8" title="1">if change, err = assign(value, field); err != nil </span><span class="cov8" title="1">{
+                                                        return
+                                                }</span>
+                                                <span class="cov8" title="1">changed = changed || change</span>
+                                        }
+                                }
+                        }
+                }
+        }
+        <span class="cov8" title="1">if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
+                if from.Type().ConvertibleTo(into.Type()) </span><span class="cov8" title="1">{
+                        err = nil
+                        converted := from.Convert(into.Type())
+                        if changed = !into.Equal(converted); changed </span><span class="cov8" title="1">{
+                                into.Set(converted)
+                        }</span>
+                }
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.Value, changed bool, err error) <span class="cov8" title="1">{
+        v = obj
+        elem, tail, _ := strings.Cut(jspath, ".")
+        if elem == "" </span><span class="cov8" title="1">{
+                if setting.IsValid() </span><span class="cov8" title="1">{
+                        if !v.CanAddr() </span><span class="cov8" title="1">{
+                                v = v.Elem()
+                        }</span>
+                        <span class="cov8" title="1">changed, err = assign(setting, v)</span>
+                }
+                <span class="cov8" title="1">return</span>
+        }
+        <span class="cov8" title="1">switch v.Kind() </span>{
+        case reflect.Array, reflect.Slice:<span class="cov8" title="1">
+                var idx int
+                if idx, err = strconv.Atoi(elem); err == nil </span><span class="cov8" title="1">{
+                        if setting.IsValid() &amp;&amp; v.Kind() == reflect.Slice &amp;&amp; idx == v.Len() </span><span class="cov8" title="1">{
+                                // allow expanding slices by one each time
+                                if idx &gt;= v.Cap() </span><span class="cov8" title="1">{
+                                        v.Grow(1)
+                                }</span>
+                                <span class="cov8" title="1">v.SetLen(idx + 1)</span>
+                        }
+                        <span class="cov8" title="1">if idx &gt;= 0 &amp;&amp; idx &lt; v.Len() </span><span class="cov8" title="1">{
+                                return getSet(v.Index(idx), tail, setting)
+                        }</span>
+                }
+        case reflect.Map:<span class="cov8" title="1">
+                iter := v.MapRange()
+                for iter.Next() </span><span class="cov8" title="1">{
+                        if iter.Key().String() == elem </span><span class="cov8" title="1">{
+                                if tail == "" </span><span class="cov8" title="1">{
+                                        if setting.IsValid() </span><span class="cov8" title="1">{
+                                                if err = assignable(setting, iter.Value()); err == nil </span><span class="cov8" title="1">{
+                                                        var change bool
+                                                        if change = !reflect.DeepEqual(v.MapIndex(iter.Key()).Interface(), setting.Interface()); change </span><span class="cov8" title="1">{
+                                                                v.SetMapIndex(iter.Key(), setting)
+                                                                v = setting
+                                                                changed = true
+                                                        }</span>
+                                                }
+                                        } else<span class="cov8" title="1"> {
+                                                v = v.MapIndex(iter.Key())
+                                        }</span>
+                                        <span class="cov8" title="1">return</span>
+                                }
+                                <span class="cov8" title="1">return getSet(iter.Value(), tail, setting)</span>
+                        }
+                }
+        case reflect.Pointer:<span class="cov8" title="1">
+                if v.IsNil() </span><span class="cov8" title="1">{
+                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                        return
+                }</span>
+                <span class="cov8" title="1">return getSet(v.Elem(), jspath, setting)</span>
+        case reflect.Interface:<span class="cov8" title="1">
+                if v.IsNil() </span><span class="cov8" title="1">{
+                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                        return
+                }</span>
+                <span class="cov8" title="1">concrete := v.Elem()
+                if setting.IsValid() &amp;&amp; jspath != "" &amp;&amp; concrete.Kind() == reflect.Struct &amp;&amp; !concrete.CanSet() </span><span class="cov8" title="1">{
+                        err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
+                        return
+                }</span>
+                <span class="cov8" title="1">return getSet(concrete, jspath, setting)</span>
+        case reflect.Struct:<span class="cov8" title="1">
+                tp := v.Type()
+                for i := 0; i &lt; tp.NumField(); i++ </span><span class="cov8" title="1">{
+                        if matchField(tp.Field(i), elem) </span><span class="cov8" title="1">{
+                                f := v.Field(i)
+                                return getSet(f, tail, setting)
+                        }</span>
+                }
+        }
+        <span class="cov8" title="1">err = errors.Join(err, errPathNotFound{elem, v.Type().String()})
+        return</span>
+}
+
+func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" title="1">{
+        var x any
+        if x, err = Get(obj, jspath); err == nil </span><span class="cov8" title="1">{
+                var ok bool
+                if val, ok = x.(T); !ok </span><span class="cov8" title="1">{
+                        err = errTypeMismatch{reflect.TypeOf(val), reflect.TypeOf(x)}
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+func Get(obj any, jspath string) (val any, err error) <span class="cov8" title="1">{
+        rv := reflect.ValueOf(obj)
+        if rv, _, err = getSet(rv, jspath, reflect.Value{}); err == nil </span><span class="cov8" title="1">{
+                err = ErrPathNotFound
+                if rv.CanInterface() </span><span class="cov8" title="1">{
+                        val = rv.Interface()
+                        err = nil
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+func Set(obj any, jspath string, val any) (changed bool, err error) <span class="cov8" title="1">{
+        err = ErrInvalidReceiver
+        rv := reflect.ValueOf(obj)
+        if rv.Kind() == reflect.Pointer &amp;&amp; !rv.IsNil() </span><span class="cov8" title="1">{
+                _, changed, err = getSet(rv, jspath, reflect.ValueOf(val))
+        }</span>
+        <span class="cov8" title="1">return</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
