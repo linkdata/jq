@@ -593,6 +593,133 @@ func TestSetRootStructMapSecondItem(t *testing.T) {
 	mustEqual(t, x.T.I, 34)
 }
 
+func TestSet_mapStructValueField(t *testing.T) {
+	type item struct {
+		A int
+	}
+	type root struct {
+		M map[string]item
+	}
+
+	x := root{
+		M: map[string]item{
+			"k": {A: 1},
+		},
+	}
+
+	changed, err := jq.Set(&x, "M.k.A", 2)
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.M["k"].A, 2)
+
+	changed, err = jq.Set(&x, "M.k.A", 2)
+	maybeError(t, err)
+	mustEqual(t, changed, false)
+	mustEqual(t, x.M["k"].A, 2)
+}
+
+func TestSet_nilSetsDefaultNonPointer(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, "S", nil)
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.S, "")
+
+	changed, err = jq.Set(&x, "I", nil)
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.I, 0)
+}
+
+func TestSet_nilSetsDefaultMapElement(t *testing.T) {
+	type root struct {
+		M map[string]int
+	}
+
+	x := root{
+		M: map[string]int{
+			"n": 7,
+		},
+	}
+
+	changed, err := jq.Set(&x, "M.n", nil)
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.M["n"], 0)
+}
+
+func TestGet_nilRootErrPathNotFound(t *testing.T) {
+	_, err := jq.Get(nil, "a")
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("expected ErrPathNotFound, got %v", err)
+	}
+}
+
+func TestSet_mapElementSameValue(t *testing.T) {
+	type root struct {
+		M map[string]int
+	}
+
+	x := root{
+		M: map[string]int{
+			"n": 7,
+		},
+	}
+
+	changed, err := jq.Set(&x, "M.n", 7)
+	maybeError(t, err)
+	mustEqual(t, changed, false)
+	mustEqual(t, x.M["n"], 7)
+}
+
+func TestSet_mapStructValueFieldErrorPropagates(t *testing.T) {
+	type item struct {
+		A int
+	}
+	type root struct {
+		M map[string]item
+	}
+
+	x := root{
+		M: map[string]item{
+			"k": {A: 1},
+		},
+	}
+
+	changed, err := jq.Set(&x, "M.k.Missing", 2)
+	mustEqual(t, changed, false)
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("expected ErrPathNotFound, got %v", err)
+	}
+	mustEqual(t, x.M["k"].A, 1)
+}
+
+func TestSet_unexportedPointerFieldReturnsNotFound(t *testing.T) {
+	type hasUnexported struct {
+		p *int //nolint:unused
+	}
+	x := hasUnexported{}
+
+	changed, err := jq.Set(&x, "p", 1)
+	mustEqual(t, changed, false)
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("expected ErrPathNotFound, got %v", err)
+	}
+}
+
+func TestSet_unexportedValueFieldReturnsNotFound(t *testing.T) {
+	type hasUnexported struct {
+		s string //nolint:unused
+	}
+	x := hasUnexported{}
+
+	changed, err := jq.Set(&x, "s", "x")
+	mustEqual(t, changed, false)
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("expected ErrPathNotFound, got %v", err)
+	}
+}
+
 func TestGet_leadingDotPath(t *testing.T) {
 	v, err := jq.Get(&testStructVal, ".S")
 	maybeError(t, err)

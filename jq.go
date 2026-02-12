@@ -96,16 +96,33 @@ func assign(from, into reflect.Value) (changed bool, err error) {
 	return
 }
 
-func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.Value, changed bool, err error) {
+func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (v reflect.Value, changed bool, err error) {
 	v = obj
+	if !v.IsValid() {
+		err = errors.Join(err, errPathNotFound{jspath, "<nil>"})
+		return
+	}
 	elem, tail, hasDot := strings.Cut(jspath, ".")
 	if elem == "" {
 		if hasDot {
-			return getSet(v, tail, setting)
+			return getSet(v, tail, setting, set)
 		}
-		if setting.IsValid() {
-			if !v.CanAddr() {
-				v = v.Elem()
+		if set {
+			if !v.CanSet() {
+				switch v.Kind() {
+				case reflect.Pointer, reflect.Interface:
+					if v.IsNil() {
+						err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+						return
+					}
+					v = v.Elem()
+				default:
+					err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+					return
+				}
+			}
+			if !setting.IsValid() {
+				setting = reflect.Zero(v.Type())
 			}
 			changed, err = assign(setting, v)
 		}
@@ -115,7 +132,7 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 	case reflect.Array, reflect.Slice:
 		var idx int
 		if idx, err = strconv.Atoi(elem); err == nil {
-			if setting.IsValid() && v.Kind() == reflect.Slice && idx == v.Len() {
+			if set && v.Kind() == reflect.Slice && idx == v.Len() {
 				// allow expanding slices by one each time
 				if idx >= v.Cap() {
 					v.Grow(1)
@@ -123,7 +140,7 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 				v.SetLen(idx + 1)
 			}
 			if idx >= 0 && idx < v.Len() {
-				return getSet(v.Index(idx), tail, setting)
+				return getSet(v.Index(idx), tail, setting, set)
 			}
 		}
 	case reflect.Map:
@@ -131,13 +148,18 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 		for iter.Next() {
 			if iter.Key().String() == elem {
 				if tail == "" {
-					if setting.IsValid() {
+					if set {
+						if !setting.IsValid() {
+							setting = reflect.Zero(iter.Value().Type())
+						}
 						if err = assignable(setting, iter.Value()); err == nil {
 							var change bool
 							if change = !reflect.DeepEqual(v.MapIndex(iter.Key()).Interface(), setting.Interface()); change {
 								v.SetMapIndex(iter.Key(), setting)
 								v = setting
 								changed = true
+							} else {
+								v = v.MapIndex(iter.Key())
 							}
 						}
 					} else {
@@ -145,7 +167,20 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 					}
 					return
 				}
-				return getSet(iter.Value(), tail, setting)
+				if !set {
+					return getSet(iter.Value(), tail, setting, set)
+				}
+				// Map values from iteration are not settable, so recurse via a writable copy.
+				value := reflect.New(iter.Value().Type()).Elem()
+				value.Set(iter.Value())
+				if _, changed, err = getSet(value, tail, setting, set); err != nil {
+					return
+				}
+				if changed {
+					v.SetMapIndex(iter.Key(), value)
+				}
+				v = value
+				return
 			}
 		}
 	case reflect.Pointer:
@@ -153,24 +188,24 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.
 			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
 			return
 		}
-		return getSet(v.Elem(), jspath, setting)
+		return getSet(v.Elem(), jspath, setting, set)
 	case reflect.Interface:
 		if v.IsNil() {
 			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
 			return
 		}
 		concrete := v.Elem()
-		if setting.IsValid() && jspath != "" && concrete.Kind() == reflect.Struct && !concrete.CanSet() {
+		if set && jspath != "" && concrete.Kind() == reflect.Struct && !concrete.CanSet() {
 			err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
 			return
 		}
-		return getSet(concrete, jspath, setting)
+		return getSet(concrete, jspath, setting, set)
 	case reflect.Struct:
 		tp := v.Type()
 		for i := 0; i < tp.NumField(); i++ {
 			if matchField(tp.Field(i), elem) {
 				f := v.Field(i)
-				return getSet(f, tail, setting)
+				return getSet(f, tail, setting, set)
 			}
 		}
 	}
@@ -191,7 +226,7 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 
 func Get(obj any, jspath string) (val any, err error) {
 	rv := reflect.ValueOf(obj)
-	if rv, _, err = getSet(rv, jspath, reflect.Value{}); err == nil {
+	if rv, _, err = getSet(rv, jspath, reflect.Value{}, false); err == nil {
 		err = ErrPathNotFound
 		if rv.CanInterface() {
 			val = rv.Interface()
@@ -205,7 +240,7 @@ func Set(obj any, jspath string, val any) (changed bool, err error) {
 	err = ErrInvalidReceiver
 	rv := reflect.ValueOf(obj)
 	if rv.Kind() == reflect.Pointer && !rv.IsNil() {
-		_, changed, err = getSet(rv, jspath, reflect.ValueOf(val))
+		_, changed, err = getSet(rv, jspath, reflect.ValueOf(val), true)
 	}
 	return
 }
