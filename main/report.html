@@ -172,7 +172,7 @@ func assign(from, into reflect.Value) (changed bool, err error) <span class="cov
                         if iter.Key().Kind() == reflect.String </span><span class="cov8" title="1">{
                                 keystring := iter.Key().String()
                                 for i := range tp.NumField() </span><span class="cov8" title="1">{
-                                        if matchField(tp.Field(i), keystring) </span><span class="cov8" title="1">{
+                                        if sf := tp.Field(i); sf.IsExported() &amp;&amp; matchField(sf, keystring) </span><span class="cov8" title="1">{
                                                 var change bool
                                                 field := into.Field(i)
                                                 value := iter.Value()
@@ -204,8 +204,7 @@ func assign(from, into reflect.Value) (changed bool, err error) <span class="cov
                                 }
                         }
                 }
-        }
-        <span class="cov8" title="1">if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
+        } else<span class="cov8" title="1"> if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
                 if from.Type().ConvertibleTo(into.Type()) </span><span class="cov8" title="1">{
                         err = nil
                         converted := from.Convert(into.Type())
@@ -219,9 +218,12 @@ func assign(from, into reflect.Value) (changed bool, err error) <span class="cov
 
 func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.Value, changed bool, err error) <span class="cov8" title="1">{
         v = obj
-        elem, tail, _ := strings.Cut(jspath, ".")
+        elem, tail, hasDot := strings.Cut(jspath, ".")
         if elem == "" </span><span class="cov8" title="1">{
-                if setting.IsValid() </span><span class="cov8" title="1">{
+                if hasDot </span><span class="cov8" title="1">{
+                        return getSet(v, tail, setting)
+                }</span>
+                <span class="cov8" title="1">if setting.IsValid() </span><span class="cov8" title="1">{
                         if !v.CanAddr() </span><span class="cov8" title="1">{
                                 v = v.Elem()
                         }</span>
