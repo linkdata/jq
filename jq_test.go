@@ -322,6 +322,14 @@ func TestGet_mapMapStringNotFound(t *testing.T) {
 
 func TestSet_mapInt(t *testing.T) {
 	x := testStructVal
+	x.M = map[string]any{
+		"MS": "string",
+		"MI": 1,
+		"MM": map[string]any{
+			"MMS": "string2",
+			"MMI": 2,
+		},
+	}
 	changed, err := jq.Set(&x, "M.MI", 3)
 	maybeError(t, err)
 	mustEqual(t, changed, true)
@@ -330,6 +338,14 @@ func TestSet_mapInt(t *testing.T) {
 
 func TestSet_mapMapInt(t *testing.T) {
 	x := testStructVal
+	x.M = map[string]any{
+		"MS": "string",
+		"MI": 1,
+		"MM": map[string]any{
+			"MMS": "string2",
+			"MMI": 2,
+		},
+	}
 	changed, err := jq.Set(&x, "M.MM.MMI", 33)
 	maybeError(t, err)
 	mustEqual(t, changed, true)
@@ -575,4 +591,42 @@ func TestSetRootStructMapSecondItem(t *testing.T) {
 	maybeError(t, err)
 	mustEqual(t, changed, true)
 	mustEqual(t, x.T.I, 34)
+}
+
+func TestGet_leadingDotPath(t *testing.T) {
+	v, err := jq.Get(&testStructVal, ".S")
+	maybeError(t, err)
+	mustEqual(t, v, testStructVal.S)
+}
+
+func TestSet_leadingDotPath(t *testing.T) {
+	x := testStructVal
+	changed, err := jq.Set(&x, ".S", "dotted")
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.S, "dotted")
+}
+
+func TestSet_unexportedFieldNoError(t *testing.T) {
+	type hasUnexported struct {
+		name string //nolint:unused
+		Name string
+	}
+	x := hasUnexported{Name: "exported"}
+	changed, err := jq.Set(&x, "", map[string]any{"name": "boom"})
+	maybeError(t, err)
+	mustEqual(t, changed, false)
+	mustEqual(t, x.Name, "exported")
+}
+
+func TestSet_unexportedFieldSetsExported(t *testing.T) {
+	type hasUnexported struct {
+		name string //nolint:unused
+		Name string
+	}
+	x := hasUnexported{Name: "exported"}
+	changed, err := jq.Set(&x, "", map[string]any{"Name": "new"})
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.Name, "new")
 }

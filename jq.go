@@ -52,7 +52,7 @@ func assign(from, into reflect.Value) (changed bool, err error) {
 			if iter.Key().Kind() == reflect.String {
 				keystring := iter.Key().String()
 				for i := range tp.NumField() {
-					if matchField(tp.Field(i), keystring) {
+					if sf := tp.Field(i); sf.IsExported() && matchField(sf, keystring) {
 						var change bool
 						field := into.Field(i)
 						value := iter.Value()
@@ -84,8 +84,7 @@ func assign(from, into reflect.Value) (changed bool, err error) {
 				}
 			}
 		}
-	}
-	if isNumber(from.Kind()) && isNumber(into.Kind()) {
+	} else if isNumber(from.Kind()) && isNumber(into.Kind()) {
 		if from.Type().ConvertibleTo(into.Type()) {
 			err = nil
 			converted := from.Convert(into.Type())
@@ -99,8 +98,11 @@ func assign(from, into reflect.Value) (changed bool, err error) {
 
 func getSet(obj reflect.Value, jspath string, setting reflect.Value) (v reflect.Value, changed bool, err error) {
 	v = obj
-	elem, tail, _ := strings.Cut(jspath, ".")
+	elem, tail, hasDot := strings.Cut(jspath, ".")
 	if elem == "" {
+		if hasDot {
+			return getSet(v, tail, setting)
+		}
 		if setting.IsValid() {
 			if !v.CanAddr() {
 				v = v.Elem()
