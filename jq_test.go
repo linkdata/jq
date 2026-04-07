@@ -320,6 +320,82 @@ func TestGet_mapMapStringNotFound(t *testing.T) {
 	}
 }
 
+func TestGet_mapNamedStringKey(t *testing.T) {
+	type key string
+	type root struct {
+		M map[key]int
+	}
+
+	x := root{
+		M: map[key]int{
+			"k": 7,
+		},
+	}
+
+	v, err := jq.Get(&x, "M.k")
+	maybeError(t, err)
+	mustEqual(t, v, 7)
+}
+
+func TestSet_mapNamedStringKey(t *testing.T) {
+	type key string
+	type root struct {
+		M map[key]int
+	}
+
+	x := root{
+		M: map[key]int{
+			"k": 7,
+		},
+	}
+
+	changed, err := jq.Set(&x, "M.k", 9)
+	maybeError(t, err)
+	mustEqual(t, changed, true)
+	mustEqual(t, x.M["k"], 9)
+
+	changed, err = jq.Set(&x, "M.k", 9)
+	maybeError(t, err)
+	mustEqual(t, changed, false)
+	mustEqual(t, x.M["k"], 9)
+}
+
+func TestGet_mapNonStringKeyPathNotFound(t *testing.T) {
+	type root struct {
+		M map[int]string
+	}
+
+	x := root{
+		M: map[int]string{
+			1: "one",
+		},
+	}
+
+	_, err := jq.Get(&x, "M.1")
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("expected ErrPathNotFound, got %v", err)
+	}
+}
+
+func TestSet_mapNonStringKeyPathNotFound(t *testing.T) {
+	type root struct {
+		M map[int]string
+	}
+
+	x := root{
+		M: map[int]string{
+			1: "one",
+		},
+	}
+
+	changed, err := jq.Set(&x, "M.1", "uno")
+	mustEqual(t, changed, false)
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("expected ErrPathNotFound, got %v", err)
+	}
+	mustEqual(t, x.M[1], "one")
+}
+
 func TestSet_mapInt(t *testing.T) {
 	x := testStructVal
 	x.M = map[string]any{

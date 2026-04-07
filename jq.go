@@ -148,40 +148,45 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
 			}
 		}
 	case reflect.Map:
-		iter := v.MapRange()
-		for iter.Next() {
-			if iter.Key().String() == elem {
+		keyType := v.Type().Key()
+		if keyType.Kind() == reflect.String {
+			key := reflect.ValueOf(elem)
+			if key.Type() != keyType {
+				key = key.Convert(keyType)
+			}
+			mapped := v.MapIndex(key)
+			if mapped.IsValid() {
 				if tail == "" {
 					if set {
 						if !setting.IsValid() {
-							setting = reflect.Zero(iter.Value().Type())
+							setting = reflect.Zero(mapped.Type())
 						}
-						if err = assignable(setting, iter.Value()); err == nil {
+						if err = assignable(setting, mapped); err == nil {
 							var change bool
-							if change = !reflect.DeepEqual(v.MapIndex(iter.Key()).Interface(), setting.Interface()); change {
-								v.SetMapIndex(iter.Key(), setting)
+							if change = !reflect.DeepEqual(mapped.Interface(), setting.Interface()); change {
+								v.SetMapIndex(key, setting)
 								v = setting
 								changed = true
 							} else {
-								v = v.MapIndex(iter.Key())
+								v = mapped
 							}
 						}
 					} else {
-						v = v.MapIndex(iter.Key())
+						v = mapped
 					}
 					return
 				}
 				if !set {
-					return getSet(iter.Value(), tail, setting, set)
+					return getSet(mapped, tail, setting, set)
 				}
-				// Map values from iteration are not settable, so recurse via a writable copy.
-				value := reflect.New(iter.Value().Type()).Elem()
-				value.Set(iter.Value())
+				// Map values are not settable, so recurse via a writable copy.
+				value := reflect.New(mapped.Type()).Elem()
+				value.Set(mapped)
 				if _, changed, err = getSet(value, tail, setting, set); err != nil {
 					return
 				}
 				if changed {
-					v.SetMapIndex(iter.Key(), value)
+					v.SetMapIndex(key, value)
 				}
 				v = value
 				return
