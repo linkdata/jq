@@ -253,8 +253,12 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
                 var idx int
                 if idx, err = strconv.Atoi(elem); err == nil </span><span class="cov8" title="1">{
                         if set &amp;&amp; v.Kind() == reflect.Slice &amp;&amp; idx == v.Len() </span><span class="cov8" title="1">{
+                                if !v.CanSet() </span><span class="cov8" title="1">{
+                                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                                        return
+                                }</span>
                                 // allow expanding slices by one each time
-                                if idx &gt;= v.Cap() </span><span class="cov8" title="1">{
+                                <span class="cov8" title="1">if idx &gt;= v.Cap() </span><span class="cov8" title="1">{
                                         v.Grow(1)
                                 }</span>
                                 <span class="cov8" title="1">v.SetLen(idx + 1)</span>
