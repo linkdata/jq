@@ -268,40 +268,45 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
                         }</span>
                 }
         case reflect.Map:<span class="cov8" title="1">
-                iter := v.MapRange()
-                for iter.Next() </span><span class="cov8" title="1">{
-                        if iter.Key().String() == elem </span><span class="cov8" title="1">{
+                keyType := v.Type().Key()
+                if keyType.Kind() == reflect.String </span><span class="cov8" title="1">{
+                        key := reflect.ValueOf(elem)
+                        if key.Type() != keyType </span><span class="cov8" title="1">{
+                                key = key.Convert(keyType)
+                        }</span>
+                        <span class="cov8" title="1">mapped := v.MapIndex(key)
+                        if mapped.IsValid() </span><span class="cov8" title="1">{
                                 if tail == "" </span><span class="cov8" title="1">{
                                         if set </span><span class="cov8" title="1">{
                                                 if !setting.IsValid() </span><span class="cov8" title="1">{
-                                                        setting = reflect.Zero(iter.Value().Type())
+                                                        setting = reflect.Zero(mapped.Type())
                                                 }</span>
-                                                <span class="cov8" title="1">if err = assignable(setting, iter.Value()); err == nil </span><span class="cov8" title="1">{
+                                                <span class="cov8" title="1">if err = assignable(setting, mapped); err == nil </span><span class="cov8" title="1">{
                                                         var change bool
-                                                        if change = !reflect.DeepEqual(v.MapIndex(iter.Key()).Interface(), setting.Interface()); change </span><span class="cov8" title="1">{
-                                                                v.SetMapIndex(iter.Key(), setting)
+                                                        if change = !reflect.DeepEqual(mapped.Interface(), setting.Interface()); change </span><span class="cov8" title="1">{
+                                                                v.SetMapIndex(key, setting)
                                                                 v = setting
                                                                 changed = true
                                                         }</span> else<span class="cov8" title="1"> {
-                                                                v = v.MapIndex(iter.Key())
+                                                                v = mapped
                                                         }</span>
                                                 }
                                         } else<span class="cov8" title="1"> {
-                                                v = v.MapIndex(iter.Key())
+                                                v = mapped
                                         }</span>
                                         <span class="cov8" title="1">return</span>
                                 }
                                 <span class="cov8" title="1">if !set </span><span class="cov8" title="1">{
-                                        return getSet(iter.Value(), tail, setting, set)
+                                        return getSet(mapped, tail, setting, set)
                                 }</span>
-                                // Map values from iteration are not settable, so recurse via a writable copy.
-                                <span class="cov8" title="1">value := reflect.New(iter.Value().Type()).Elem()
-                                value.Set(iter.Value())
+                                // Map values are not settable, so recurse via a writable copy.
+                                <span class="cov8" title="1">value := reflect.New(mapped.Type()).Elem()
+                                value.Set(mapped)
                                 if _, changed, err = getSet(value, tail, setting, set); err != nil </span><span class="cov8" title="1">{
                                         return
                                 }</span>
                                 <span class="cov8" title="1">if changed </span><span class="cov8" title="1">{
-                                        v.SetMapIndex(iter.Key(), value)
+                                        v.SetMapIndex(key, value)
                                 }</span>
                                 <span class="cov8" title="1">v = value
                                 return</span>
