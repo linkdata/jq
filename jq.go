@@ -133,6 +133,10 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
 		var idx int
 		if idx, err = strconv.Atoi(elem); err == nil {
 			if set && v.Kind() == reflect.Slice && idx == v.Len() {
+				if !v.CanSet() {
+					err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+					return
+				}
 				// allow expanding slices by one each time
 				if idx >= v.Cap() {
 					v.Grow(1)
