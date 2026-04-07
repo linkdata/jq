@@ -522,6 +522,23 @@ func TestSet_interfacePointerValue(t *testing.T) {
 	mustEqual(t, v, "other")
 }
 
+func TestSet_interfaceSliceExpandNotSettableReturnsNotFound(t *testing.T) {
+	type container struct {
+		Any any
+	}
+
+	c := container{Any: []int{1}}
+	changed, err := jq.Set(&c, "Any.1", 2)
+	mustEqual(t, changed, false)
+	if !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("expected ErrPathNotFound, got %v", err)
+	}
+
+	v, err := jq.Get(&c, "Any.0")
+	maybeError(t, err)
+	mustEqual(t, v, 1)
+}
+
 func TestSetRootStructMapWrongType(t *testing.T) {
 	var x testSubType
 	changed, err := jq.Set(&x, "", map[string]any{"S": 1})
