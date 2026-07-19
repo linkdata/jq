@@ -2,6 +2,7 @@ package jq_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/linkdata/jq"
@@ -52,4 +53,23 @@ func Example() {
 	// Output:
 	// reading
 	// Anytown
+}
+
+func ExampleSetChecked() {
+	value := []string{"one"}
+	maxBytes := len(`["one"]`)
+
+	_, err := jq.SetChecked(&value, "1", "two", func() (err error) {
+		var data []byte
+		if data, err = json.Marshal(value); err == nil && len(data) > maxBytes {
+			err = errors.New("value is too large")
+		}
+		return
+	})
+
+	fmt.Println(value)
+	fmt.Println(err)
+	// Output:
+	// [one]
+	// value is too large
 }

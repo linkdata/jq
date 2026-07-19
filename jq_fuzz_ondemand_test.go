@@ -195,6 +195,7 @@ func assertOnDemandSetGetCase(t *testing.T, path string, raw []byte, ifaceMode, 
 	t.Helper()
 	path = onDemandClamp(path, 256)
 	root := newOnDemandRoot(ifaceMode)
+	before := newOnDemandRoot(ifaceMode)
 	value := onDemandValue(raw, valueKind)
 
 	changed1, err1 := jq.Set(&root, path, value)
@@ -205,7 +206,13 @@ func assertOnDemandSetGetCase(t *testing.T, path string, raw []byte, ifaceMode, 
 		if !errors.Is(err1, jq.ErrPathNotFound) && !errors.Is(err1, jq.ErrTypeMismatch) {
 			t.Fatalf("unexpected Set error path=%q valueKind=%d err=%v", path, valueKind, err1)
 		}
+		if !reflect.DeepEqual(root, before) {
+			t.Fatalf("Set mutated state on error path=%q valueKind=%d got=%#v want=%#v", path, valueKind, root, before)
+		}
 		return
+	}
+	if !changed1 && !reflect.DeepEqual(root, before) {
+		t.Fatalf("Set mutated state while reporting no change path=%q valueKind=%d got=%#v want=%#v", path, valueKind, root, before)
 	}
 
 	changed2, err2 := jq.Set(&root, path, value)

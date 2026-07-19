@@ -141,6 +141,9 @@ func FuzzSet_NoPanicIdempotent(f *testing.F) {
 		{"I", []byte{2}, 2},
 		{"L.0", []byte{3}, 2},
 		{"L.2", []byte{4}, 2},
+		{"L.2", nil, 2},
+		{"L.2", []byte("wrong"), 1},
+		{"L.2.Missing", []byte{4}, 2},
 		{"L.foo", []byte{5}, 2},
 		{"M.n", []byte{6}, 2},
 		{"M.sub.x", []byte{7}, 2},
@@ -161,13 +164,23 @@ func FuzzSet_NoPanicIdempotent(f *testing.F) {
 		}
 		value := buildFuzzValue(raw, mode)
 		root := newFuzzType()
+		before := newFuzzType()
 
 		changed1, err1 := jq.Set(&root, path, value)
 		if err1 != nil {
+			if changed1 {
+				t.Fatalf("Set reported a change on error for path %q value %#v: %v", path, value, err1)
+			}
+			if !reflect.DeepEqual(root, before) {
+				t.Fatalf("Set mutated state on error for path %q value %#v: got %#v want %#v", path, value, root, before)
+			}
 			if !errors.Is(err1, jq.ErrPathNotFound) && !errors.Is(err1, jq.ErrTypeMismatch) {
 				t.Fatalf("unexpected Set error for path %q value %#v: %v", path, value, err1)
 			}
 			return
+		}
+		if !changed1 && !reflect.DeepEqual(root, before) {
+			t.Fatalf("Set mutated state while reporting no change for path %q value %#v: got %#v want %#v", path, value, root, before)
 		}
 
 		changed2, err2 := jq.Set(&root, path, value)
@@ -180,6 +193,126 @@ func FuzzSet_NoPanicIdempotent(f *testing.F) {
 
 		if _, err := jq.Get(&root, path); err != nil {
 			t.Fatalf("Get failed after successful Set for path %q value %#v: %v", path, value, err)
+		}
+	})
+}
+
+var errFuzzCheckRejected = errors.New("fuzz check rejected")
+
+func FuzzSetChecked_AtomicCallbackContract(f *testing.F) {
+	for _, seed := range []struct {
+		path     string
+		raw      []byte
+		mode     uint8
+		decision uint8
+	}{
+		{"S", []byte("changed"), 1, 0},
+		{"I", []byte{2}, 2, 1},
+		{"L.2", nil, 2, 1},
+		{"L.2", []byte("wrong"), 1, 1},
+		{"P.S", []byte("panic"), 1, 2},
+		{"M.n", []byte{6}, 2, 3},
+		{"Nope", []byte("x"), 1, 0},
+	} {
+		f.Add(seed.path, seed.raw, seed.mode, seed.decision)
+	}
+
+	f.Fuzz(func(t *testing.T, path string, raw []byte, mode, decision uint8) {
+		path = clampString(path, 256)
+		if len(raw) > 128 {
+			raw = raw[:128]
+		}
+		value := buildFuzzValue(raw, mode)
+		before := newFuzzType()
+		want := newFuzzType()
+		wantChanged, wantErr := jq.Set(&want, path, value)
+		root := newFuzzType()
+		calls := 0
+		var changed bool
+		var err error
+
+		switch decision % 4 {
+		case 0: // accept
+			changed, err = jq.SetChecked(&root, path, value, func() error {
+				calls++
+				return nil
+			})
+		case 1: // reject
+			changed, err = jq.SetChecked(&root, path, value, func() error {
+				calls++
+				return errFuzzCheckRejected
+			})
+		case 2: // panic
+			panicValue := &struct{}{}
+			panicked := false
+			func() {
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						panicked = true
+						if recovered != panicValue {
+							t.Fatalf("SetChecked repanicked with %#v, want %#v", recovered, panicValue)
+						}
+					}
+				}()
+				changed, err = jq.SetChecked(&root, path, value, func() error {
+					calls++
+					panic(panicValue)
+				})
+			}()
+			if panicked != wantChanged {
+				t.Fatalf("SetChecked panic = %t, want %t for path %q value %#v", panicked, wantChanged, path, value)
+			}
+		case 3: // nil check
+			changed, err = jq.SetChecked(&root, path, value, nil)
+		}
+
+		if wantErr != nil {
+			wantPath := errors.Is(wantErr, jq.ErrPathNotFound)
+			wantType := errors.Is(wantErr, jq.ErrTypeMismatch)
+			if err == nil || errors.Is(err, jq.ErrPathNotFound) != wantPath || errors.Is(err, jq.ErrTypeMismatch) != wantType {
+				t.Fatalf("SetChecked error = %v, want %v for path %q value %#v", err, wantErr, path, value)
+			}
+			if changed || calls != 0 || !reflect.DeepEqual(root, before) {
+				t.Fatalf("SetChecked setter error contract: changed=%t calls=%d root=%#v want=%#v", changed, calls, root, before)
+			}
+			return
+		}
+
+		switch decision % 4 {
+		case 0:
+			wantCalls := 0
+			if wantChanged {
+				wantCalls = 1
+			}
+			if err != nil || changed != wantChanged || calls != wantCalls || !reflect.DeepEqual(root, want) {
+				t.Fatalf("SetChecked accept = (%t, %v, %d calls, %#v), want (%t, nil, %d calls, %#v)", changed, err, calls, root, wantChanged, wantCalls, want)
+			}
+		case 3:
+			if err != nil || changed != wantChanged || calls != 0 || !reflect.DeepEqual(root, want) {
+				t.Fatalf("SetChecked nil check = (%t, %v, %d calls, %#v), want (%t, nil, 0 calls, %#v)", changed, err, calls, root, wantChanged, want)
+			}
+		case 1:
+			if wantChanged {
+				if err != errFuzzCheckRejected || changed || calls != 1 {
+					t.Fatalf("SetChecked rejection = (%t, %v, %d calls), want (false, exact rejection, 1 call)", changed, err, calls)
+				}
+			} else if err != nil || changed || calls != 0 {
+				t.Fatalf("SetChecked no-op rejection = (%t, %v, %d calls), want (false, nil, 0 calls)", changed, err, calls)
+			}
+			if !reflect.DeepEqual(root, before) {
+				t.Fatalf("SetChecked rejection mutated state: got %#v want %#v", root, before)
+			}
+		case 2:
+			wantCalls := 0
+			if wantChanged {
+				wantCalls = 1
+			}
+			if err != nil || changed || calls != wantCalls {
+				t.Fatalf("SetChecked panic = (%t, %v, %d calls), want (false, nil, %d calls)", changed, err, calls, wantCalls)
+			}
+			if !reflect.DeepEqual(root, before) {
+				t.Fatalf("SetChecked panic mutated state: got %#v want %#v", root, before)
+			}
 		}
 	})
 }
