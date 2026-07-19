@@ -61,7 +61,7 @@
 				
 				<option value="file2">github.com/linkdata/jq/jq.go (100.0%)</option>
 				
-				<option value="file3">github.com/linkdata/jq/transaction.go (100.0%)</option>
+				<option value="file3">github.com/linkdata/jq/undolog.go (100.0%)</option>
 				
 				</select>
 			</div>
@@ -201,23 +201,6 @@ func assignMap(from, into reflect.Value) (changed bool, err error) <span class="
         <span class="cov8" title="1">return</span>
 }
 
-func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err error) <span class="cov8" title="1">{
-        if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
-                candidate = from
-                return
-        }</span>
-        <span class="cov8" title="1">if from.Kind() == reflect.Map &amp;&amp; into.Kind() == reflect.Struct </span><span class="cov8" title="1">{
-                candidate = cloneValue(into)
-                _, err = assignMap(from, candidate)
-        }</span> else<span class="cov8" title="1"> if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
-                if from.Type().ConvertibleTo(into.Type()) </span><span class="cov8" title="1">{
-                        err = nil
-                        candidate = from.Convert(into.Type())
-                }</span>
-        }
-        <span class="cov8" title="1">return</span>
-}
-
 func assign(from, into reflect.Value, log *undoLog) (changed bool, err error) <span class="cov8" title="1">{
         if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
                 if changed = !reflect.DeepEqual(into.Interface(), from.Interface()); changed </span><span class="cov8" title="1">{
@@ -304,20 +287,19 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
                                 }</span>
                                 // Allow expanding slices by one each time. Prepare the element before
                                 // changing the real slice so an invalid assignment leaves it untouched.
-                                <span class="cov8" title="1">var candidate reflect.Value
-                                if tail == "" </span><span class="cov8" title="1">{
-                                        zero := reflect.Zero(v.Type().Elem())
-                                        value := setting.value
-                                        if !value.IsValid() </span><span class="cov8" title="1">{
-                                                value = zero
-                                        }</span>
-                                        <span class="cov8" title="1">if candidate, err = prepareAssignment(value, zero); err != nil </span><span class="cov8" title="1">{
-                                                return
-                                        }</span>
-                                } else<span class="cov8" title="1"> {
-                                        candidate = reflect.New(v.Type().Elem()).Elem()
+                                <span class="cov8" title="1">elemType := v.Type().Elem()
+                                candidate := setting.value
+                                if tail != "" </span><span class="cov8" title="1">{
+                                        candidate = reflect.New(elemType).Elem()
                                         candidateSetting := assignment{value: setting.value}
                                         if _, _, err = getSet(candidate, tail, &amp;candidateSetting); err != nil </span><span class="cov8" title="1">{
+                                                return
+                                        }</span>
+                                } else<span class="cov8" title="1"> if !candidate.IsValid() </span><span class="cov8" title="1">{
+                                        candidate = reflect.Zero(elemType)
+                                }</span> else<span class="cov8" title="1"> if !candidate.Type().AssignableTo(elemType) </span><span class="cov8" title="1">{
+                                        candidate = reflect.New(elemType).Elem()
+                                        if _, err = assign(setting.value, candidate, nil); err != nil </span><span class="cov8" title="1">{
                                                 return
                                         }</span>
                                 }
