@@ -12,6 +12,7 @@ type benchmarkSetState struct {
 	Child *benchmarkSetChild
 	Items []int
 	Pair  benchmarkSetPair
+	Pairs []benchmarkSetPair
 }
 
 type benchmarkSetChild struct {
@@ -81,6 +82,36 @@ func BenchmarkSet(b *testing.B) {
 			i++
 			value.Items = nil
 			if _, err := jq.Set(&value, "Items.0", i); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("SliceAppendConvert", func(b *testing.B) {
+		value := benchmarkSetState{Items: make([]int, 0, 1)}
+		i := 0
+		b.ReportAllocs()
+		for b.Loop() {
+			i++
+			value.Items = value.Items[:0]
+			if _, err := jq.Set(&value, "Items.0", int8(i)); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("SliceAppendMapToStruct", func(b *testing.B) {
+		value := benchmarkSetState{Pairs: make([]benchmarkSetPair, 0, 1)}
+		inputs := [2]map[string]any{
+			{"Left": 1, "Right": 2},
+			{"Left": 3, "Right": 4},
+		}
+		i := 0
+		b.ReportAllocs()
+		for b.Loop() {
+			i++
+			value.Pairs = value.Pairs[:0]
+			if _, err := jq.Set(&value, "Pairs.0", inputs[i&1]); err != nil {
 				b.Fatal(err)
 			}
 		}
