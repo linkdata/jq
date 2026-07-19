@@ -39,6 +39,7 @@ jobs:
         run: |
           go test ./... -run=^$ -fuzz=FuzzGet_NoPanicAndErrorContract -fuzztime=5s
           go test ./... -run=^$ -fuzz=FuzzSet_NoPanicIdempotent -fuzztime=5s
+          go test ./... -run=^$ -fuzz=FuzzSetChecked_AtomicCallbackContract -fuzztime=5s
           go test ./... -run=^$ -fuzz=FuzzSet_InvalidReceiverContract -fuzztime=3s
 
       - name: Run Gosec Security Scanner
