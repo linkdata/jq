@@ -61,6 +61,8 @@
 				
 				<option value="file2">github.com/linkdata/jq/jq.go (100.0%)</option>
 				
+				<option value="file3">github.com/linkdata/jq/undolog.go (100.0%)</option>
+				
 				</select>
 			</div>
 			<div id="legend">
@@ -157,94 +159,143 @@ func isNumber(k reflect.Kind) bool <span class="cov8" title="1">{
         <span class="cov8" title="1">return false</span>
 }
 
-func assign(from, into reflect.Value) (changed bool, err error) <span class="cov8" title="1">{
-        if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
-                if changed = !reflect.DeepEqual(into.Interface(), from.Interface()); changed </span><span class="cov8" title="1">{
-                        into.Set(from)
-                }</span>
-                <span class="cov8" title="1">return</span>
-        }
-        <span class="cov8" title="1">if from.Kind() == reflect.Map &amp;&amp; into.Kind() == reflect.Struct </span><span class="cov8" title="1">{
-                err = nil
-                tp := into.Type()
-                iter := from.MapRange()
-                for iter.Next() </span><span class="cov8" title="1">{
-                        if iter.Key().Kind() == reflect.String </span><span class="cov8" title="1">{
-                                keystring := iter.Key().String()
-                                for i := range tp.NumField() </span><span class="cov8" title="1">{
-                                        if sf := tp.Field(i); sf.IsExported() &amp;&amp; matchField(sf, keystring) </span><span class="cov8" title="1">{
-                                                var change bool
-                                                field := into.Field(i)
-                                                value := iter.Value()
-                                                switch value.Kind() </span>{
-                                                case reflect.Interface:<span class="cov8" title="1">
+func assignMap(from, into reflect.Value) (changed bool, err error) <span class="cov8" title="1">{
+        tp := into.Type()
+        iter := from.MapRange()
+        for iter.Next() </span><span class="cov8" title="1">{
+                if iter.Key().Kind() == reflect.String </span><span class="cov8" title="1">{
+                        keystring := iter.Key().String()
+                        for i := range tp.NumField() </span><span class="cov8" title="1">{
+                                if sf := tp.Field(i); sf.IsExported() &amp;&amp; matchField(sf, keystring) </span><span class="cov8" title="1">{
+                                        var change bool
+                                        field := into.Field(i)
+                                        value := iter.Value()
+                                        switch value.Kind() </span>{
+                                        case reflect.Interface:<span class="cov8" title="1">
+                                                if value.IsNil() </span><span class="cov8" title="1">{
+                                                        value = reflect.Zero(field.Type())
+                                                }</span> else<span class="cov8" title="1"> {
+                                                        value = value.Elem()
+                                                }</span>
+                                        case reflect.Pointer:<span class="cov8" title="1">
+                                                if field.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
+                                                        if value.IsNil() </span><span class="cov8" title="1">{
+                                                                value = reflect.Zero(field.Type())
+                                                        }</span>
+                                                } else<span class="cov8" title="1"> {
                                                         if value.IsNil() </span><span class="cov8" title="1">{
                                                                 value = reflect.Zero(field.Type())
                                                         }</span> else<span class="cov8" title="1"> {
                                                                 value = value.Elem()
                                                         }</span>
-                                                case reflect.Pointer:<span class="cov8" title="1">
-                                                        if field.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
-                                                                if value.IsNil() </span><span class="cov8" title="1">{
-                                                                        value = reflect.Zero(field.Type())
-                                                                }</span>
-                                                        } else<span class="cov8" title="1"> {
-                                                                if value.IsNil() </span><span class="cov8" title="1">{
-                                                                        value = reflect.Zero(field.Type())
-                                                                }</span> else<span class="cov8" title="1"> {
-                                                                        value = value.Elem()
-                                                                }</span>
-                                                        }
                                                 }
-                                                <span class="cov8" title="1">if change, err = assign(value, field); err != nil </span><span class="cov8" title="1">{
-                                                        return
-                                                }</span>
-                                                <span class="cov8" title="1">changed = changed || change</span>
                                         }
+                                        <span class="cov8" title="1">if change, err = assign(value, field, nil); err != nil </span><span class="cov8" title="1">{
+                                                return
+                                        }</span>
+                                        <span class="cov8" title="1">changed = changed || change</span>
                                 }
                         }
-                }
-        } else<span class="cov8" title="1"> if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
-                if from.Type().ConvertibleTo(into.Type()) </span><span class="cov8" title="1">{
-                        err = nil
-                        converted := from.Convert(into.Type())
-                        if changed = !into.Equal(converted); changed </span><span class="cov8" title="1">{
-                                into.Set(converted)
-                        }</span>
                 }
         }
         <span class="cov8" title="1">return</span>
 }
 
-func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (v reflect.Value, changed bool, err error) <span class="cov8" title="1">{
+// prepareAssignment returns a candidate value assignable to into's type
+// without writing to into.
+//
+// It intentionally mirrors the dispatch in [assign] rather than sharing code:
+// assign needs per-case change detection, while this must stay free of
+// comparisons and extra allocations for the slice-append paths.
+func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err error) <span class="cov8" title="1">{
+        if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
+                candidate = from
+                return
+        }</span>
+        <span class="cov8" title="1">if from.Kind() == reflect.Map &amp;&amp; into.Kind() == reflect.Struct </span><span class="cov8" title="1">{
+                candidate = cloneValue(into)
+                _, err = assignMap(from, candidate)
+        }</span> else<span class="cov8" title="1"> if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
+                if from.Type().ConvertibleTo(into.Type()) </span><span class="cov8" title="1">{
+                        err = nil
+                        candidate = from.Convert(into.Type())
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+func assign(from, into reflect.Value, log *undoLog) (changed bool, err error) <span class="cov8" title="1">{
+        if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
+                if changed = !reflect.DeepEqual(into.Interface(), from.Interface()); changed </span><span class="cov8" title="1">{
+                        if log == nil </span><span class="cov8" title="1">{
+                                into.Set(from)
+                        }</span> else<span class="cov8" title="1"> {
+                                log.set(into, from)
+                        }</span>
+                }
+                <span class="cov8" title="1">return</span>
+        }
+        <span class="cov8" title="1">if from.Kind() == reflect.Map &amp;&amp; into.Kind() == reflect.Struct </span><span class="cov8" title="1">{
+                candidate := cloneValue(into)
+                if changed, err = assignMap(from, candidate); err == nil </span><span class="cov8" title="1">{
+                        if changed </span><span class="cov8" title="1">{
+                                if log == nil </span><span class="cov8" title="1">{
+                                        into.Set(candidate)
+                                }</span> else<span class="cov8" title="1"> {
+                                        log.set(into, candidate)
+                                }</span>
+                        }
+                } else<span class="cov8" title="1"> {
+                        changed = false
+                }</span>
+        } else<span class="cov8" title="1"> if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
+                if from.Type().ConvertibleTo(into.Type()) </span><span class="cov8" title="1">{
+                        err = nil
+                        converted := from.Convert(into.Type())
+                        if changed = !into.Equal(converted); changed </span><span class="cov8" title="1">{
+                                if log == nil </span><span class="cov8" title="1">{
+                                        into.Set(converted)
+                                }</span> else<span class="cov8" title="1"> {
+                                        log.set(into, converted)
+                                }</span>
+                        }
+                }
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+type assignment struct {
+        value reflect.Value
+        log   *undoLog
+}
+
+func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Value, changed bool, err error) <span class="cov8" title="1">{
         v = obj
         if !v.IsValid() </span><span class="cov8" title="1">{
                 err = errors.Join(err, errPathNotFound{jspath, "&lt;nil&gt;"})
                 return
         }</span>
-        <span class="cov8" title="1">elem, tail, hasDot := strings.Cut(jspath, ".")
+        <span class="cov8" title="1">set := setting != nil
+        elem, tail, hasDot := strings.Cut(jspath, ".")
         if elem == "" </span><span class="cov8" title="1">{
                 if hasDot </span><span class="cov8" title="1">{
-                        return getSet(v, tail, setting, set)
+                        return getSet(v, tail, setting)
                 }</span>
                 <span class="cov8" title="1">if set </span><span class="cov8" title="1">{
                         if !v.CanSet() </span><span class="cov8" title="1">{
-                                switch v.Kind() </span>{
-                                case reflect.Pointer, reflect.Interface:<span class="cov8" title="1">
-                                        if v.IsNil() </span><span class="cov8" title="1">{
-                                                err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-                                                return
-                                        }</span>
-                                        <span class="cov8" title="1">v = v.Elem()</span>
-                                default:<span class="cov8" title="1">
-                                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-                                        return</span>
-                                }
+                                if (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) &amp;&amp; !v.IsNil() </span><span class="cov8" title="1">{
+                                        v = v.Elem()
+                                }</span>
                         }
-                        <span class="cov8" title="1">if !setting.IsValid() </span><span class="cov8" title="1">{
-                                setting = reflect.Zero(v.Type())
+                        <span class="cov8" title="1">if !v.CanSet() </span><span class="cov8" title="1">{
+                                err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                                return
                         }</span>
-                        <span class="cov8" title="1">changed, err = assign(setting, v)</span>
+                        <span class="cov8" title="1">value := setting.value
+                        if !value.IsValid() </span><span class="cov8" title="1">{
+                                value = reflect.Zero(v.Type())
+                        }</span>
+                        <span class="cov8" title="1">changed, err = assign(value, v, setting.log)</span>
                 }
                 <span class="cov8" title="1">return</span>
         }
@@ -257,14 +308,40 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
                                         err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
                                         return
                                 }</span>
-                                // allow expanding slices by one each time
-                                <span class="cov8" title="1">if idx &gt;= v.Cap() </span><span class="cov8" title="1">{
-                                        v.Grow(1)
+                                // Allow expanding slices by one each time. Prepare the element before
+                                // changing the real slice so an invalid assignment leaves it untouched.
+                                <span class="cov8" title="1">var candidate reflect.Value
+                                if tail == "" </span><span class="cov8" title="1">{
+                                        zero := reflect.Zero(v.Type().Elem())
+                                        value := setting.value
+                                        if !value.IsValid() </span><span class="cov8" title="1">{
+                                                value = zero
+                                        }</span>
+                                        <span class="cov8" title="1">if candidate, err = prepareAssignment(value, zero); err != nil </span><span class="cov8" title="1">{
+                                                return
+                                        }</span>
+                                } else<span class="cov8" title="1"> {
+                                        candidate = reflect.New(v.Type().Elem()).Elem()
+                                        candidateSetting := assignment{value: setting.value}
+                                        if _, _, err = getSet(candidate, tail, &amp;candidateSetting); err != nil </span><span class="cov8" title="1">{
+                                                return
+                                        }</span>
+                                }
+                                <span class="cov8" title="1">if setting.log == nil </span><span class="cov8" title="1">{
+                                        if idx &gt;= v.Cap() </span><span class="cov8" title="1">{
+                                                v.Grow(1)
+                                        }</span>
+                                        <span class="cov8" title="1">v.SetLen(idx + 1)
+                                        v.Index(idx).Set(candidate)</span>
+                                } else<span class="cov8" title="1"> {
+                                        setting.log.append(v, candidate)
                                 }</span>
-                                <span class="cov8" title="1">v.SetLen(idx + 1)</span>
+                                <span class="cov8" title="1">v = v.Index(idx)
+                                changed = true
+                                return</span>
                         }
                         <span class="cov8" title="1">if idx &gt;= 0 &amp;&amp; idx &lt; v.Len() </span><span class="cov8" title="1">{
-                                return getSet(v.Index(idx), tail, setting, set)
+                                return getSet(v.Index(idx), tail, setting)
                         }</span>
                 }
         case reflect.Map:<span class="cov8" title="1">
@@ -278,16 +355,21 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
                         if mapped.IsValid() </span><span class="cov8" title="1">{
                                 if tail == "" </span><span class="cov8" title="1">{
                                         if set </span><span class="cov8" title="1">{
-                                                if !setting.IsValid() </span><span class="cov8" title="1">{
-                                                        setting = reflect.Zero(mapped.Type())
+                                                value := setting.value
+                                                if !value.IsValid() </span><span class="cov8" title="1">{
+                                                        value = reflect.Zero(mapped.Type())
                                                 }</span>
-                                                <span class="cov8" title="1">if err = assignable(setting, mapped); err == nil </span><span class="cov8" title="1">{
+                                                <span class="cov8" title="1">if err = assignable(value, mapped); err == nil </span><span class="cov8" title="1">{
                                                         var change bool
-                                                        if change = !reflect.DeepEqual(mapped.Interface(), setting.Interface()); change </span><span class="cov8" title="1">{
-                                                                v.SetMapIndex(key, setting)
-                                                                v = setting
-                                                                changed = true
-                                                        }</span> else<span class="cov8" title="1"> {
+                                                        if change = !reflect.DeepEqual(mapped.Interface(), value.Interface()); change </span><span class="cov8" title="1">{
+                                                                if setting.log == nil </span><span class="cov8" title="1">{
+                                                                        v.SetMapIndex(key, value)
+                                                                }</span> else<span class="cov8" title="1"> {
+                                                                        setting.log.setMapIndex(v, key, value)
+                                                                }</span>
+                                                                <span class="cov8" title="1">v = value
+                                                                changed = true</span>
+                                                        } else<span class="cov8" title="1"> {
                                                                 v = mapped
                                                         }</span>
                                                 }
@@ -297,17 +379,21 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
                                         <span class="cov8" title="1">return</span>
                                 }
                                 <span class="cov8" title="1">if !set </span><span class="cov8" title="1">{
-                                        return getSet(mapped, tail, setting, set)
+                                        return getSet(mapped, tail, setting)
                                 }</span>
                                 // Map values are not settable, so recurse via a writable copy.
                                 <span class="cov8" title="1">value := reflect.New(mapped.Type()).Elem()
                                 value.Set(mapped)
-                                if _, changed, err = getSet(value, tail, setting, set); err != nil </span><span class="cov8" title="1">{
+                                if _, changed, err = getSet(value, tail, setting); err != nil </span><span class="cov8" title="1">{
                                         return
                                 }</span>
                                 <span class="cov8" title="1">if changed </span><span class="cov8" title="1">{
-                                        v.SetMapIndex(key, value)
-                                }</span>
+                                        if setting.log == nil </span><span class="cov8" title="1">{
+                                                v.SetMapIndex(key, value)
+                                        }</span> else<span class="cov8" title="1"> {
+                                                setting.log.setMapIndex(v, key, value)
+                                        }</span>
+                                }
                                 <span class="cov8" title="1">v = value
                                 return</span>
                         }
@@ -317,7 +403,7 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
                         err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
                         return
                 }</span>
-                <span class="cov8" title="1">return getSet(v.Elem(), jspath, setting, set)</span>
+                <span class="cov8" title="1">return getSet(v.Elem(), jspath, setting)</span>
         case reflect.Interface:<span class="cov8" title="1">
                 if v.IsNil() </span><span class="cov8" title="1">{
                         err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
@@ -328,13 +414,13 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
                         err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
                         return
                 }</span>
-                <span class="cov8" title="1">return getSet(concrete, jspath, setting, set)</span>
+                <span class="cov8" title="1">return getSet(concrete, jspath, setting)</span>
         case reflect.Struct:<span class="cov8" title="1">
                 tp := v.Type()
                 for i := 0; i &lt; tp.NumField(); i++ </span><span class="cov8" title="1">{
-                        if matchField(tp.Field(i), elem) </span><span class="cov8" title="1">{
+                        if sf := tp.Field(i); sf.IsExported() &amp;&amp; matchField(sf, elem) </span><span class="cov8" title="1">{
                                 f := v.Field(i)
-                                return getSet(f, tail, setting, set)
+                                return getSet(f, tail, setting)
                         }</span>
                 }
         }
@@ -342,6 +428,9 @@ func getSet(obj reflect.Value, jspath string, setting reflect.Value, set bool) (
         return</span>
 }
 
+// GetAs returns the value at jspath in obj as T.
+//
+// It returns [ErrTypeMismatch] when the resolved value is not assignable to T.
 func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" title="1">{
         var x any
         if x, err = Get(obj, jspath); err == nil </span><span class="cov8" title="1">{
@@ -353,9 +442,13 @@ func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" 
         <span class="cov8" title="1">return</span>
 }
 
+// Get returns the value at jspath in obj.
+//
+// An empty path returns obj itself unless obj is nil. Values containing maps,
+// slices, or pointers may share their backing data with obj.
 func Get(obj any, jspath string) (val any, err error) <span class="cov8" title="1">{
         rv := reflect.ValueOf(obj)
-        if rv, _, err = getSet(rv, jspath, reflect.Value{}, false); err == nil </span><span class="cov8" title="1">{
+        if rv, _, err = getSet(rv, jspath, nil); err == nil </span><span class="cov8" title="1">{
                 err = ErrPathNotFound
                 if rv.CanInterface() </span><span class="cov8" title="1">{
                         val = rv.Interface()
@@ -365,13 +458,132 @@ func Get(obj any, jspath string) (val any, err error) <span class="cov8" title="
         <span class="cov8" title="1">return</span>
 }
 
-func Set(obj any, jspath string, val any) (changed bool, err error) <span class="cov8" title="1">{
+func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error) <span class="cov8" title="1">{
         err = ErrInvalidReceiver
         rv := reflect.ValueOf(obj)
         if rv.Kind() == reflect.Pointer &amp;&amp; !rv.IsNil() </span><span class="cov8" title="1">{
-                _, changed, err = getSet(rv, jspath, reflect.ValueOf(val), true)
+                setting := assignment{value: reflect.ValueOf(val), log: log}
+                _, changed, err = getSet(rv, jspath, &amp;setting)
         }</span>
         <span class="cov8" title="1">return</span>
+}
+
+// Set updates jspath in obj and reports whether it performed a write.
+//
+// obj must be a non-nil pointer. An empty path replaces the pointed-to value.
+// A path into a settable slice may append one element by using an index equal to
+// the slice's current length. Map paths address existing string-keyed entries and
+// do not create new entries. A nil val stores the destination type's zero value.
+//
+// Set leaves obj unchanged when it returns an error. It does not synchronize
+// access to obj; callers must prevent concurrent reads and writes.
+func Set(obj any, jspath string, val any) (changed bool, err error) <span class="cov8" title="1">{
+        return set(obj, jspath, val, nil)
+}</span>
+
+func setChecked(obj any, jspath string, val any, check func() error) (changed bool, err error) <span class="cov8" title="1">{
+        var log undoLog
+        committed := false
+        defer func() </span><span class="cov8" title="1">{
+                if !committed </span><span class="cov8" title="1">{
+                        log.rollback()
+                        changed = false
+                }</span>
+        }()
+
+        <span class="cov8" title="1">if changed, err = set(obj, jspath, val, &amp;log); err == nil &amp;&amp; changed </span><span class="cov8" title="1">{
+                if err = check(); err == nil </span><span class="cov8" title="1">{
+                        log.commit()
+                        committed = true
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+// SetChecked updates jspath only when check accepts the resulting object.
+//
+// SetChecked first applies the same operation as [Set]. If Set reports a write,
+// SetChecked calls check exactly once while obj contains the tentative result. A
+// nil error commits the change. If check returns an error, SetChecked restores
+// obj, returns false, and returns that error unchanged. If check panics,
+// SetChecked restores obj before the panic continues. A nil check behaves like
+// [Set].
+//
+// check is not called for an invalid operation or when Set reports no write. It
+// may inspect obj, including by calling [Get], but must not mutate obj or values
+// reachable from it, call [Set] or SetChecked on them, or retain references into
+// a rejected tentative value. Rollback covers only mutations made by SetChecked
+// itself.
+//
+// SetChecked does not synchronize access to obj. Callers must prevent concurrent
+// access for the entire call, including while check runs.
+func SetChecked(obj any, jspath string, val any, check func() error) (changed bool, err error) <span class="cov8" title="1">{
+        if check != nil </span><span class="cov8" title="1">{
+                return setChecked(obj, jspath, val, check)
+        }</span>
+        <span class="cov8" title="1">return set(obj, jspath, val, nil)</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package jq
+
+import "reflect"
+
+type undoLog struct {
+        undos []func()
+}
+
+func cloneValue(value reflect.Value) (clone reflect.Value) <span class="cov8" title="1">{
+        clone = reflect.New(value.Type()).Elem()
+        clone.Set(value)
+        return
+}</span>
+
+func (log *undoLog) add(undo func()) <span class="cov8" title="1">{
+        log.undos = append(log.undos, undo)
+}</span>
+
+func (log *undoLog) set(dst, src reflect.Value) <span class="cov8" title="1">{
+        old := cloneValue(dst)
+        log.add(func() </span><span class="cov8" title="1">{
+                dst.Set(old)
+        }</span>)
+        <span class="cov8" title="1">dst.Set(src)</span>
+}
+
+func (log *undoLog) setMapIndex(value, key, elem reflect.Value) <span class="cov8" title="1">{
+        old := value.MapIndex(key)
+        log.add(func() </span><span class="cov8" title="1">{
+                value.SetMapIndex(key, old)
+        }</span>)
+        <span class="cov8" title="1">value.SetMapIndex(key, elem)</span>
+}
+
+func (log *undoLog) append(value, elem reflect.Value) <span class="cov8" title="1">{
+        old := cloneValue(value)
+        var oldTail, tail reflect.Value
+        if value.Len() &lt; value.Cap() </span><span class="cov8" title="1">{
+                tail = value.Slice(0, value.Len()+1).Index(value.Len())
+                oldTail = cloneValue(tail)
+        }</span>
+        <span class="cov8" title="1">log.add(func() </span><span class="cov8" title="1">{
+                if tail.IsValid() </span><span class="cov8" title="1">{
+                        tail.Set(oldTail)
+                }</span>
+                <span class="cov8" title="1">value.Set(old)</span>
+        })
+        <span class="cov8" title="1">value.Set(reflect.Append(value, elem))</span>
+}
+
+func (log *undoLog) commit() <span class="cov8" title="1">{
+        log.undos = nil
+}</span>
+
+func (log *undoLog) rollback() <span class="cov8" title="1">{
+        for i := len(log.undos) - 1; i &gt;= 0; i-- </span><span class="cov8" title="1">{
+                log.undos[i]()
+        }</span>
+        <span class="cov8" title="1">log.undos = nil</span>
 }
 </pre>
 		
