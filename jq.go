@@ -79,23 +79,6 @@ func assignMap(from, into reflect.Value) (changed bool, err error) {
 	return
 }
 
-func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err error) {
-	if err = assignable(from, into); err == nil {
-		candidate = from
-		return
-	}
-	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
-		candidate = cloneValue(into)
-		_, err = assignMap(from, candidate)
-	} else if isNumber(from.Kind()) && isNumber(into.Kind()) {
-		if from.Type().ConvertibleTo(into.Type()) {
-			err = nil
-			candidate = from.Convert(into.Type())
-		}
-	}
-	return
-}
-
 func assign(from, into reflect.Value, log *undoLog) (changed bool, err error) {
 	if err = assignable(from, into); err == nil {
 		if changed = !reflect.DeepEqual(into.Interface(), from.Interface()); changed {
@@ -182,20 +165,19 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 				}
 				// Allow expanding slices by one each time. Prepare the element before
 				// changing the real slice so an invalid assignment leaves it untouched.
-				var candidate reflect.Value
-				if tail == "" {
-					zero := reflect.Zero(v.Type().Elem())
-					value := setting.value
-					if !value.IsValid() {
-						value = zero
-					}
-					if candidate, err = prepareAssignment(value, zero); err != nil {
-						return
-					}
-				} else {
-					candidate = reflect.New(v.Type().Elem()).Elem()
+				elemType := v.Type().Elem()
+				candidate := setting.value
+				if tail != "" {
+					candidate = reflect.New(elemType).Elem()
 					candidateSetting := assignment{value: setting.value}
 					if _, _, err = getSet(candidate, tail, &candidateSetting); err != nil {
+						return
+					}
+				} else if !candidate.IsValid() {
+					candidate = reflect.Zero(elemType)
+				} else if !candidate.Type().AssignableTo(elemType) {
+					candidate = reflect.New(elemType).Elem()
+					if _, err = assign(setting.value, candidate, nil); err != nil {
 						return
 					}
 				}

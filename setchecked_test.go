@@ -22,7 +22,9 @@ type checkedState struct {
 	Value      int
 	Pointer    *checkedItem
 	Items      []int
+	Structs    []checkedItem
 	Map        map[string]int
+	SliceMap   map[string][]int
 	StructMap  map[string]checkedItem
 	PointerMap map[string]*checkedItem
 	Any        any
@@ -236,6 +238,47 @@ func TestSetCheckedRejectRestoresAliases(t *testing.T) {
 		}
 		if len(value.Items) != 1 || cap(value.Items) != 1 || &value.Items[0] != before {
 			t.Fatalf("slice header was not restored: len/cap=%d/%d", len(value.Items), cap(value.Items))
+		}
+	})
+
+	t.Run("append with tail", func(t *testing.T) {
+		backing := []checkedItem{{Value: 1}, {Value: 99}}
+		value := checkedState{Structs: backing[:1]}
+		before := &value.Structs[0]
+
+		changed, err := jq.SetChecked(&value, "Structs.1.Value", 2, func() error {
+			if len(value.Structs) != 2 || value.Structs[1].Value != 2 {
+				t.Fatalf("check saw slice = %v, want [{1} {2}]", value.Structs)
+			}
+			return errCheckRejected
+		})
+		if changed || err != errCheckRejected {
+			t.Fatalf("changed, err = %t, %v; want false, exact rejection error", changed, err)
+		}
+		if len(value.Structs) != 1 || cap(value.Structs) != 2 || &value.Structs[0] != before {
+			t.Fatalf("slice header was not restored: len/cap=%d/%d", len(value.Structs), cap(value.Structs))
+		}
+		if backing[1].Value != 99 {
+			t.Fatalf("backing slot = %#v, want {99}", backing[1])
+		}
+	})
+
+	t.Run("append inside map", func(t *testing.T) {
+		backing := []int{1, 99}
+		alias := map[string][]int{"key": backing[:1]}
+		value := checkedState{SliceMap: alias}
+
+		changed, err := jq.SetChecked(&value, "SliceMap.key.1", 2, func() error {
+			if got := alias["key"]; len(got) != 2 || got[1] != 2 {
+				t.Fatalf("check saw slice = %v, want [1 2]", got)
+			}
+			return errCheckRejected
+		})
+		if changed || err != errCheckRejected {
+			t.Fatalf("changed, err = %t, %v; want false, exact rejection error", changed, err)
+		}
+		if got := alias["key"]; len(got) != 1 || got[0] != 1 || backing[1] != 99 {
+			t.Fatalf("map slice was not restored: alias=%v backing=%v", got, backing)
 		}
 	})
 

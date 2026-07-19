@@ -26,9 +26,11 @@ type benchmarkSetPair struct {
 func BenchmarkSet(b *testing.B) {
 	b.Run("Scalar", func(b *testing.B) {
 		var value int
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			if _, err := jq.Set(&value, "", i+1); err != nil {
+		for b.Loop() {
+			i++
+			if _, err := jq.Set(&value, "", i); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -36,9 +38,11 @@ func BenchmarkSet(b *testing.B) {
 
 	b.Run("NestedPointer", func(b *testing.B) {
 		value := benchmarkSetState{Child: &benchmarkSetChild{}}
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			if _, err := jq.Set(&value, "Child.Value", i+1); err != nil {
+		for b.Loop() {
+			i++
+			if _, err := jq.Set(&value, "Child.Value", i); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -46,9 +50,11 @@ func BenchmarkSet(b *testing.B) {
 
 	b.Run("ExistingSliceElement", func(b *testing.B) {
 		value := benchmarkSetState{Items: []int{0}}
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			if _, err := jq.Set(&value, "Items.0", i+1); err != nil {
+		for b.Loop() {
+			i++
+			if _, err := jq.Set(&value, "Items.0", i); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -56,10 +62,12 @@ func BenchmarkSet(b *testing.B) {
 
 	b.Run("SliceAppend", func(b *testing.B) {
 		value := benchmarkSetState{Items: make([]int, 0, 1)}
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
+			i++
 			value.Items = value.Items[:0]
-			if _, err := jq.Set(&value, "Items.0", i+1); err != nil {
+			if _, err := jq.Set(&value, "Items.0", i); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -67,10 +75,12 @@ func BenchmarkSet(b *testing.B) {
 
 	b.Run("SliceAppendGrow", func(b *testing.B) {
 		var value benchmarkSetState
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
+			i++
 			value.Items = nil
-			if _, err := jq.Set(&value, "Items.0", i+1); err != nil {
+			if _, err := jq.Set(&value, "Items.0", i); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -82,8 +92,10 @@ func BenchmarkSet(b *testing.B) {
 			{"Left": 1, "Right": 2},
 			{"Left": 3, "Right": 4},
 		}
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
+			i++
 			if _, err := jq.Set(&value, "Pair", inputs[i&1]); err != nil {
 				b.Fatal(err)
 			}
@@ -94,9 +106,11 @@ func BenchmarkSet(b *testing.B) {
 func BenchmarkSetChecked(b *testing.B) {
 	b.Run("NilCheck", func(b *testing.B) {
 		var value int
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			if _, err := jq.SetChecked(&value, "", i+1, nil); err != nil {
+		for b.Loop() {
+			i++
+			if _, err := jq.SetChecked(&value, "", i, nil); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -105,9 +119,11 @@ func BenchmarkSetChecked(b *testing.B) {
 	b.Run("AcceptScalar", func(b *testing.B) {
 		var value int
 		check := func() error { return nil }
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			if _, err := jq.SetChecked(&value, "", i+1, check); err != nil {
+		for b.Loop() {
+			i++
+			if _, err := jq.SetChecked(&value, "", i, check); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -117,9 +133,11 @@ func BenchmarkSetChecked(b *testing.B) {
 		var value int
 		errRejected := errors.New("rejected")
 		check := func() error { return errRejected }
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			if _, err := jq.SetChecked(&value, "", i+1, check); err != errRejected {
+		for b.Loop() {
+			i++
+			if _, err := jq.SetChecked(&value, "", i, check); err != errRejected {
 				b.Fatalf("SetChecked error = %v, want exact rejection error", err)
 			}
 		}
@@ -128,10 +146,12 @@ func BenchmarkSetChecked(b *testing.B) {
 	b.Run("AcceptSliceAppend", func(b *testing.B) {
 		value := benchmarkSetState{Items: make([]int, 0, 1)}
 		check := func() error { return nil }
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
+			i++
 			value.Items = value.Items[:0]
-			if _, err := jq.SetChecked(&value, "Items.0", i+1, check); err != nil {
+			if _, err := jq.SetChecked(&value, "Items.0", i, check); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -141,9 +161,11 @@ func BenchmarkSetChecked(b *testing.B) {
 		value := benchmarkSetState{Items: make([]int, 0, 1)}
 		errRejected := errors.New("rejected")
 		check := func() error { return errRejected }
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			if _, err := jq.SetChecked(&value, "Items.0", i+1, check); err != errRejected {
+		for b.Loop() {
+			i++
+			if _, err := jq.SetChecked(&value, "Items.0", i, check); err != errRejected {
 				b.Fatalf("SetChecked error = %v, want exact rejection error", err)
 			}
 		}
@@ -156,8 +178,10 @@ func BenchmarkSetChecked(b *testing.B) {
 			{"Left": 3, "Right": 4},
 		}
 		check := func() error { return nil }
+		i := 0
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
+			i++
 			if _, err := jq.SetChecked(&value, "Pair", inputs[i&1], check); err != nil {
 				b.Fatal(err)
 			}
