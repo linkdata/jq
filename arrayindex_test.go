@@ -3,6 +3,7 @@ package jq_test
 import (
 	"errors"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/linkdata/jq"
@@ -15,6 +16,7 @@ type arrayIndexHolder struct {
 }
 
 type arrayIndexTagged struct {
+	One          int `json:"1"`
 	ZeroZero     int `json:"00"`
 	ZeroOne      int `json:"01"`
 	PositiveOne  int `json:"+1"`
@@ -133,15 +135,14 @@ func TestCanonicalArrayIndexOperations(t *testing.T) {
 		}
 
 		calls := 0
+		var checked [2]int
 		changed, err = jq.SetChecked(&value, "0", 11, func() error {
 			calls++
-			if value[0] != 11 {
-				t.Fatalf("checker saw value = %v, want [11 21]", value)
-			}
+			checked = value
 			return nil
 		})
-		if err != nil || !changed || calls != 1 || value != [2]int{11, 21} {
-			t.Fatalf("SetChecked = (%t, %v, %d calls), value = %v", changed, err, calls, value)
+		if want := [2]int{11, 21}; err != nil || !changed || calls != 1 || checked != want || value != want {
+			t.Fatalf("SetChecked = (%t, %v, %d calls), checked/value = %v/%v, want %v", changed, err, calls, checked, value, want)
 		}
 	})
 
@@ -162,15 +163,60 @@ func TestCanonicalArrayIndexOperations(t *testing.T) {
 		}
 
 		calls := 0
+		var checked []int
 		changed, err = jq.SetChecked(&value, "3", 40, func() error {
 			calls++
-			if !reflect.DeepEqual(value, []int{10, 21, 30, 40}) {
-				t.Fatalf("checker saw value = %v", value)
-			}
+			checked = append(checked, value...)
 			return nil
 		})
-		if err != nil || !changed || calls != 1 || !reflect.DeepEqual(value, []int{10, 21, 30, 40}) {
-			t.Fatalf("SetChecked append = (%t, %v, %d calls), value = %v", changed, err, calls, value)
+		want := []int{10, 21, 30, 40}
+		if err != nil || !changed || calls != 1 || !reflect.DeepEqual(checked, want) || !reflect.DeepEqual(value, want) {
+			t.Fatalf("SetChecked append = (%t, %v, %d calls), checked/value = %v/%v, want %v", changed, err, calls, checked, value, want)
+		}
+	})
+}
+
+func TestArrayIndexBoundary(t *testing.T) {
+	if strconv.IntSize < 64 {
+		t.Skip("host int cannot represent the JavaScript array-index boundary")
+	}
+	const component = "4294967295"
+	length := uint64(1) << 32
+
+	t.Run("Get", func(t *testing.T) {
+		value := make([]struct{}, length)
+		if _, err := jq.Get(value, "4294967294"); err != nil {
+			t.Fatalf("Get at the maximum array index: %v", err)
+		}
+		_, err := jq.Get(value, component)
+		requirePathNotFound(t, err)
+	})
+
+	t.Run("Set", func(t *testing.T) {
+		value := make([]struct{}, length-1, length)
+		changed, err := jq.Set(&value, component, struct{}{})
+		if changed {
+			t.Fatal("Set appended at the reserved maximum array index")
+		}
+		requirePathNotFound(t, err)
+		if uint64(len(value)) != length-1 {
+			t.Fatalf("slice length = %d, want %d", len(value), length-1)
+		}
+	})
+
+	t.Run("SetChecked", func(t *testing.T) {
+		value := make([]struct{}, length-1, length)
+		calls := 0
+		changed, err := jq.SetChecked(&value, component, struct{}{}, func() error {
+			calls++
+			return nil
+		})
+		if changed {
+			t.Fatal("SetChecked appended at the reserved maximum array index")
+		}
+		requirePathNotFound(t, err)
+		if calls != 0 || uint64(len(value)) != length-1 {
+			t.Fatalf("SetChecked made %d checker calls and left length %d, want 0 calls and %d", calls, len(value), length-1)
 		}
 	})
 }
@@ -218,6 +264,7 @@ func TestArrayIndexSyntaxIsDestinationAware(t *testing.T) {
 		{component: "+1", value: 3},
 		{component: "-0", value: 4},
 		{component: "4294967295", value: 5},
+		{component: "1", value: 6},
 	}
 
 	t.Run("map keys", func(t *testing.T) {
@@ -250,6 +297,7 @@ func TestArrayIndexSyntaxIsDestinationAware(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(tc.component, func(t *testing.T) {
 				value := arrayIndexTagged{
+					One:          6,
 					ZeroZero:     1,
 					ZeroOne:      2,
 					PositiveOne:  3,

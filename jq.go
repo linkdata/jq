@@ -181,7 +181,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 		if idx, ok := parseArrayIndex(elem); ok {
 			if set && v.Kind() == reflect.Slice && idx == v.Len() {
 				if !v.CanSet() {
-					err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+					err = errPathNotFound{jspath, v.Type().String()}
 					return
 				}
 				// Allow expanding slices by one each time. Prepare the element before
@@ -216,7 +216,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 				changed = true
 				return
 			}
-			if idx >= 0 && idx < v.Len() {
+			if idx < v.Len() {
 				return getSet(v.Index(idx), tail, setting)
 			}
 		}
@@ -300,7 +300,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 			}
 		}
 	}
-	err = errors.Join(err, errPathNotFound{elem, v.Type().String()})
+	err = errPathNotFound{elem, v.Type().String()}
 	return
 }
 
