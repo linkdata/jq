@@ -3,7 +3,6 @@ package jq
 import (
 	"errors"
 	"reflect"
-	"strconv"
 	"strings"
 )
 
@@ -179,11 +178,10 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 	}
 	switch v.Kind() {
 	case reflect.Array, reflect.Slice:
-		var idx int
-		if idx, err = strconv.Atoi(elem); err == nil {
+		if idx, ok := parseArrayIndex(elem); ok {
 			if set && v.Kind() == reflect.Slice && idx == v.Len() {
 				if !v.CanSet() {
-					err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+					err = errPathNotFound{jspath, v.Type().String()}
 					return
 				}
 				// Allow expanding slices by one each time. Prepare the element before
@@ -218,7 +216,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 				changed = true
 				return
 			}
-			if idx >= 0 && idx < v.Len() {
+			if idx < v.Len() {
 				return getSet(v.Index(idx), tail, setting)
 			}
 		}
@@ -302,7 +300,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 			}
 		}
 	}
-	err = errors.Join(err, errPathNotFound{elem, v.Type().String()})
+	err = errPathNotFound{elem, v.Type().String()}
 	return
 }
 
@@ -324,6 +322,11 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 //
 // An empty path returns obj itself unless obj is nil. Values containing maps,
 // slices, or pointers may share their backing data with obj.
+//
+// When traversal reaches an array or slice, a component is a valid index only
+// if it is "0" or begins with an ASCII digit from '1' through '9' followed by
+// zero or more ASCII decimal digits. The index must be at most 4294967294 and
+// representable as int; otherwise the error matches [ErrPathNotFound].
 func Get(obj any, jspath string) (val any, err error) {
 	rv := reflect.ValueOf(obj)
 	if rv, _, err = getSet(rv, jspath, nil); err == nil {
@@ -349,9 +352,11 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // Set updates jspath in obj and reports whether it performed a write.
 //
 // obj must be a non-nil pointer. An empty path replaces the pointed-to value.
-// A path into a settable slice may append one element by using an index equal to
-// the slice's current length. Map paths address existing string-keyed entries and
-// do not create new entries. A nil val stores the destination type's zero value.
+// Array and slice components follow the index syntax documented by [Get]. A
+// path into a settable slice may append one element by using an index equal to
+// the slice's current length. Map paths address existing string-keyed entries
+// and do not create new entries. A nil val stores the destination type's zero
+// value.
 //
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.
