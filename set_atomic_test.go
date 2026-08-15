@@ -48,7 +48,7 @@ func TestSetAppendFailureIsAtomic(t *testing.T) {
 			if &value[0] != before {
 				t.Fatal("Set replaced the slice backing array on error")
 			}
-			if backing != nil && (backing[0] != 1 || backing[1] != 99) {
+			if backing[0] != 1 || backing[1] != 99 {
 				t.Fatalf("backing slice = %v, want [1 99]", backing)
 			}
 		})
