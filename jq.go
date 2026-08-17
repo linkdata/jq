@@ -117,7 +117,7 @@ func stageValue(from, into reflect.Value, log *undoLog) (candidate reflect.Value
 	// pointers until the update succeeds.
 	if err = assignable(from, into); err == nil {
 		candidate = from
-		changed = !reflect.DeepEqual(into.Interface(), from.Interface())
+		changed = !assignmentEqual(into, from)
 		return
 	}
 	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
@@ -301,7 +301,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 						}
 						if err = assignable(value, mapped); err == nil {
 							var change bool
-							if change = !reflect.DeepEqual(mapped.Interface(), value.Interface()); change {
+							if change = !assignmentEqual(mapped, value); change {
 								if setting.log == nil {
 									v.SetMapIndex(key, value)
 								} else {
@@ -421,7 +421,9 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // path into a settable slice may append one element by using an index equal to
 // the slice's current length. Map paths address existing string-keyed entries
 // and do not create new entries. A nil val stores the destination type's zero
-// value.
+// value. A distinct pointer or map identity, or a slice with different backing
+// storage, length, or capacity, reports a change even when its current contents
+// match.
 //
 // Struct components and string keys in map-to-struct assignments follow [Get]'s
 // field-selection rules. Set can traverse an explicitly named unexported
