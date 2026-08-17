@@ -75,6 +75,11 @@ assignments.
 An exact `json:"-"` tag excludes a field from path traversal and map-to-struct
 assignments.
 
+When an unexported embedded field has an explicit JSON name, `Get` and `Set` can
+traverse that component on paths to reachable exported fields. A path ending at
+the embedded field returns `ErrPathNotFound`, as does a map-to-struct assignment
+to it.
+
 ## Checked updates
 
 `SetChecked` tentatively applies the same operation as `Set`, then calls a
@@ -83,5 +88,8 @@ object and is returned unchanged. A checker panic also restores the object
 before the panic continues.
 
 The checker runs only when `Set` reports a write. It may inspect or marshal the
-tentative object, but it must not mutate it. Callers are responsible for
-synchronizing access throughout `SetChecked`, including while the checker runs.
+tentative object, but it must not mutate it. When the checker uses `Get`, a path
+ending at an explicitly named unexported embedded field returns
+`ErrPathNotFound`, even after a tentative update beneath it. Callers are
+responsible for synchronizing access throughout `SetChecked`, including while
+the checker runs.

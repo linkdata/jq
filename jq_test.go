@@ -29,45 +29,49 @@ type testType struct {
 	IGN   int    `json:"-"`
 }
 
-var testInt = 1
-var testString = "text"
-var testIntArray = []int{1, 2, 3}
-var testStringMatrix = [][]string{{"0.0", "0.1", "0.2"}, {"1.0", "1.1", "1.2"}, {"2.0", "2.1", "2.2"}}
-var testStructVal = testType{
-	S:  "string",
-	I:  1,
-	AI: testIntArray,
-	T:  testSubType{S: "T_S"},
-	PT: &testType{S: "PT_S"},
-	APT: []*testType{
-		{S: "PA.0"},
-		{S: "PA.1",
-			APT: []*testType{
-				{S: "PA.1.0"},
-				{S: "PA.1.1"},
+var (
+	testInt          = 1
+	testString       = "text"
+	testIntArray     = []int{1, 2, 3}
+	testStringMatrix = [][]string{{"0.0", "0.1", "0.2"}, {"1.0", "1.1", "1.2"}, {"2.0", "2.1", "2.2"}}
+	testStructVal    = testType{
+		S:  "string",
+		I:  1,
+		AI: testIntArray,
+		T:  testSubType{S: "T_S"},
+		PT: &testType{S: "PT_S"},
+		APT: []*testType{
+			{S: "PA.0"},
+			{
+				S: "PA.1",
+				APT: []*testType{
+					{S: "PA.1.0"},
+					{S: "PA.1.1"},
+				},
 			},
 		},
-	},
-	AT: []testType{
-		{S: "SA.0"},
-		{S: "SA.1",
-			AT: []testType{
-				{S: "SA.1.0"},
-				{S: "SA.1.1"},
+		AT: []testType{
+			{S: "SA.0"},
+			{
+				S: "SA.1",
+				AT: []testType{
+					{S: "SA.1.0"},
+					{S: "SA.1.1"},
+				},
 			},
 		},
-	},
-	M: map[string]any{
-		"MS": "string",
-		"MI": 1,
-		"MM": map[string]any{
-			"MMS": "string2",
-			"MMI": 2,
+		M: map[string]any{
+			"MS": "string",
+			"MI": 1,
+			"MM": map[string]any{
+				"MMS": "string2",
+				"MMI": 2,
+			},
 		},
-	},
-	S_X: "sX",
-	IGN: 123,
-}
+		S_X: "sX",
+		IGN: 123,
+	}
+)
 
 func maybeError(t *testing.T, err error) {
 	t.Helper()
