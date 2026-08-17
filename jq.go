@@ -159,11 +159,9 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 		return
 	}
 	set := setting != nil
-	elem, tail, hasDot := strings.Cut(jspath, ".")
+	jspath = strings.TrimLeft(jspath, ".")
+	elem, tail, _ := strings.Cut(jspath, ".")
 	if elem == "" {
-		if hasDot {
-			return getSet(v, tail, setting)
-		}
 		if set {
 			if !v.CanSet() {
 				if (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) && !v.IsNil() {
