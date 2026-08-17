@@ -33,14 +33,6 @@ type benchmarkGetWide struct {
 	Tenth   int
 }
 
-func benchmarkPointerInterfaces(value any, depth int) any {
-	for range depth {
-		next := value
-		value = &next
-	}
-	return value
-}
-
 func BenchmarkGet(b *testing.B) {
 	b.Run("FirstField", func(b *testing.B) {
 		value := benchmarkGetPair{First: 1}
@@ -76,7 +68,7 @@ func BenchmarkGet(b *testing.B) {
 	})
 
 	b.Run("DeepPointerInterfaces", func(b *testing.B) {
-		value := benchmarkPointerInterfaces(&benchmarkGetChild{Value: 1}, 2048)
+		value := wrapPointerInterfaces(&benchmarkGetChild{Value: 1}, 2048)
 		b.ReportAllocs()
 		for b.Loop() {
 			got, err := jq.Get(value, "value")
