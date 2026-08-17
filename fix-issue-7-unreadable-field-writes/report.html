@@ -453,8 +453,11 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
         case reflect.Struct:<span class="cov8" title="1">
                 if index, ok := cachedStructFields(v.Type())[elem]; ok </span><span class="cov8" title="1">{
                         if field, _ := structFieldValue(v, index); field.IsValid() </span><span class="cov8" title="1">{
-                                return getSet(field, tail, setting)
-                        }</span>
+                                if set &amp;&amp; !field.CanInterface() &amp;&amp; strings.Trim(tail, ".") == "" </span><span class="cov8" title="1">{
+                                        break</span>
+                                }
+                                <span class="cov8" title="1">return getSet(field, tail, setting)</span>
+                        }
                 }
         }
         <span class="cov8" title="1">err = errPathNotFound{elem, v.Type().String()}
@@ -485,9 +488,10 @@ func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" 
 // Exported fields promoted through unexported embedded structs are readable with
 // Get and writable with [Set], including through map-to-struct assignments. An
 // exact `json:"-"` tag excludes a field from the path namespace. Get and [Set]
-// can traverse an explicitly named unexported embedded field to reach selected
-// exported fields, but a path ending at the embedded field returns an error
-// matching [ErrPathNotFound]. Traversing a nil pointer returns the same error.
+// can traverse an explicitly named unexported embedded field on paths to
+// reachable exported fields, but a path ending at the embedded field returns an
+// error matching [ErrPathNotFound]. Traversing a nil pointer returns the same
+// error.
 //
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
@@ -526,7 +530,7 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 //
 // Struct components and string keys in map-to-struct assignments follow [Get]'s
 // field-selection rules. Set can traverse an explicitly named unexported
-// embedded field to update a selected exported field. A path ending at the
+// embedded field to update a reachable exported field. A path ending at the
 // embedded field, or a map-to-struct key selecting it, returns an error matching
 // [ErrPathNotFound]. Set does not allocate nil pointers; a path traversing one
 // returns the same error.
@@ -539,16 +543,23 @@ func Set(obj any, jspath string, val any) (changed bool, err error) <span class=
 
 // SetChecked updates jspath only when check accepts the tentative result.
 //
-// It performs the same update as [Set]. If the update reports a change,
-// SetChecked calls check exactly once while obj contains the tentative result. A
-// nil error commits the update. If check returns an error, SetChecked restores
-// obj, returns false, and returns the error unchanged. If check panics, SetChecked
-// restores obj before the panic continues. A nil check behaves like [Set].
+// It performs the same update as [Set], including updates to reachable exported
+// fields through explicitly named unexported embedded fields. If the update
+// reports a change, SetChecked calls check exactly once while obj contains the
+// tentative result. A nil error commits the update. If check returns an error,
+// SetChecked restores obj, returns false, and returns the error unchanged. If
+// check panics, SetChecked restores obj before the panic continues. A nil check
+// behaves like [Set].
 //
-// check is not called if the update is invalid or reports no change. It may
-// inspect obj but must not mutate obj or values reachable from it, call [Set] or
-// SetChecked on them, or retain references into a rejected value. Rollback
-// restores only changes made by SetChecked.
+// check is not called if the update is invalid or reports no change. When check
+// uses [Get] to inspect obj, a path ending at an explicitly named unexported
+// embedded field returns an error matching [ErrPathNotFound], even after a
+// tentative update beneath it; longer paths to reachable exported fields remain
+// readable.
+//
+// check must not mutate obj or values reachable from it, call [Set] or SetChecked
+// on them, or retain references into a rejected value. Rollback restores only
+// changes made by SetChecked.
 //
 // SetChecked does not synchronize access to obj. Callers must prevent concurrent
 // access for the entire call, including while check runs.
