@@ -299,16 +299,15 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 						if !value.IsValid() {
 							value = reflect.Zero(mapped.Type())
 						}
-						if err = assignable(value, mapped); err == nil {
-							var change bool
-							if change = !reflect.DeepEqual(mapped.Interface(), value.Interface()); change {
+						var candidate reflect.Value
+						if candidate, changed, err = stageValue(value, mapped, setting.log); err == nil {
+							if changed {
 								if setting.log == nil {
-									v.SetMapIndex(key, value)
+									v.SetMapIndex(key, candidate)
 								} else {
-									setting.log.setMapIndex(v, key, value)
+									setting.log.setMapIndex(v, key, candidate)
 								}
-								v = value
-								changed = true
+								v = candidate
 							} else {
 								v = mapped
 							}
