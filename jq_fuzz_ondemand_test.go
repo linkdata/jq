@@ -16,7 +16,21 @@ type onDemandSub struct {
 	F float64
 }
 
+type onDemandPromoted struct {
+	Promoted int `json:"promoted"`
+}
+
+type onDemandPromotedMiddle struct {
+	onDemandPromoted
+}
+
+type onDemandPromotedPointer struct {
+	PromotedPointer int `json:"promotedPointer"`
+}
+
 type onDemandRoot struct {
+	onDemandPromotedMiddle
+	*onDemandPromotedPointer
 	Str     string         `json:"str"`
 	Num     int            `json:"num"`
 	U8      uint8          `json:"u8"`
@@ -63,7 +77,7 @@ func onDemandValue(raw []byte, kind uint8) any {
 	}
 	s := string(raw)
 	sub := onDemandSub{S: s, I: n, F: float64(n) + 0.5}
-	switch kind % 18 {
+	switch kind % 21 {
 	case 0:
 		return nil
 	case 1:
@@ -98,21 +112,33 @@ func onDemandValue(raw []byte, kind uint8) any {
 		return map[string]any{"slice": []int{n, n + 1}}
 	case 16:
 		return map[string]*onDemandSub{"pSub": nil}
-	default:
+	case 17:
 		return []byte(raw)
+	case 18:
+		next := n + 1
+		return map[string]any{"promoted": &n, "promotedPointer": &next, "str": &s}
+	case 19:
+		var nilInt *int
+		return map[string]any{"promoted": nilInt}
+	default:
+		return map[string]any{"promotedPointer": &n, "str": n}
 	}
 }
 
 func newOnDemandRoot(mode uint8) onDemandRoot {
 	r := onDemandRoot{
-		Str:    "root",
-		Num:    7,
-		U8:     5,
-		F64:    4.2,
-		Bool:   true,
-		Arr:    [2]int{11, 22},
-		Slice:  []int{1, 2},
-		SliceS: []string{"a", "b"},
+		onDemandPromotedMiddle: onDemandPromotedMiddle{
+			onDemandPromoted: onDemandPromoted{Promoted: 41},
+		},
+		onDemandPromotedPointer: &onDemandPromotedPointer{PromotedPointer: 42},
+		Str:                     "root",
+		Num:                     7,
+		U8:                      5,
+		F64:                     4.2,
+		Bool:                    true,
+		Arr:                     [2]int{11, 22},
+		Slice:                   []int{1, 2},
+		SliceS:                  []string{"a", "b"},
 		MapInt: map[string]int{
 			"a": 1,
 			"b": 2,
@@ -143,12 +169,17 @@ func newOnDemandRoot(mode uint8) onDemandRoot {
 	if mode&0x20 != 0 {
 		r.PSub = nil
 	}
+	if mode&0x40 != 0 {
+		r.onDemandPromotedPointer = nil
+	}
 	return r
 }
 
 func onDemandPaths() []string {
 	base := []string{
 		"",
+		"promoted", "Promoted", "onDemandPromotedMiddle.promoted",
+		"promotedPointer", "PromotedPointer", "onDemandPromotedPointer.promotedPointer",
 		"str", "num", "u8", "f64", "bool",
 		"arr", "arr.0", "arr.1", "arr.2", "arr.-1", "arr.x",
 		"slice", "slice.0", "slice.1", "slice.2", "slice.-1", "slice.x",
@@ -184,7 +215,7 @@ func onDemandPaths() []string {
 }
 
 func onDemandValueKinds() []uint8 {
-	kinds := make([]uint8, 18)
+	kinds := make([]uint8, 21)
 	for i := range kinds {
 		kinds[i] = uint8(i)
 	}
@@ -196,6 +227,7 @@ func assertOnDemandSetGetCase(t *testing.T, path string, raw []byte, ifaceMode, 
 	path = onDemandClamp(path, 256)
 	root := newOnDemandRoot(ifaceMode)
 	before := newOnDemandRoot(ifaceMode)
+	promotedPointer := root.onDemandPromotedPointer
 	value := onDemandValue(raw, valueKind)
 
 	changed1, err1 := jq.Set(&root, path, value)
@@ -208,6 +240,9 @@ func assertOnDemandSetGetCase(t *testing.T, path string, raw []byte, ifaceMode, 
 		}
 		if !reflect.DeepEqual(root, before) {
 			t.Fatalf("Set mutated state on error path=%q valueKind=%d got=%#v want=%#v", path, valueKind, root, before)
+		}
+		if root.onDemandPromotedPointer != promotedPointer {
+			t.Fatalf("Set replaced promoted pointer on error path=%q valueKind=%d", path, valueKind)
 		}
 		return
 	}
@@ -320,6 +355,7 @@ func FuzzOnDemand_ComprehensivePathTypeMatrix(f *testing.F) {
 		{[]byte("iface"), 3, "any.0", 2},
 		{[]byte("nil"), 4, "anyNil.S", 6},
 		{[]byte("dots"), 0x20, "...", 1},
+		{[]byte("nil promoted"), 0x40, "promotedPointer", 2},
 	}
 	for _, seed := range seeds {
 		f.Add(seed.raw, seed.ifaceMode, seed.path, seed.valueKind)

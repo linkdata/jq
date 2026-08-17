@@ -6,19 +6,6 @@ import (
 	"strings"
 )
 
-func matchField(f reflect.StructField, want string) (yes bool) {
-	name := f.Name
-	if tag, ok := f.Tag.Lookup("json"); ok {
-		if tag, _, _ = strings.Cut(tag, ","); tag != "" {
-			if tag == "-" {
-				return false
-			}
-			name = tag
-		}
-	}
-	return name == want
-}
-
 func assignable(from, into reflect.Value) (err error) {
 	if !from.Type().AssignableTo(into.Type()) {
 		err = errTypeMismatch{into.Type(), from.Type()}
@@ -36,63 +23,86 @@ func isNumber(k reflect.Kind) bool {
 	return false
 }
 
-func assignMap(from, into reflect.Value) (changed bool, err error) {
+func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error) {
 	tp := into.Type()
+	if from.Type().Key().Kind() != reflect.String {
+		return
+	}
+	// A staged struct still shares data through pointers. Use a local log when
+	// the caller has no transaction, so failed staging can restore those values.
+	var local undoLog
+	ownsLog := log == nil
+	if ownsLog {
+		log = &local
+	}
+	fields := cachedStructFields(tp)
 	iter := from.MapRange()
 	for iter.Next() {
-		if iter.Key().Kind() == reflect.String {
-			keystring := iter.Key().String()
-			for i := range tp.NumField() {
-				if sf := tp.Field(i); sf.IsExported() && matchField(sf, keystring) {
-					var change bool
-					field := into.Field(i)
-					value := iter.Value()
-					switch value.Kind() {
-					case reflect.Interface:
-						if value.IsNil() {
-							value = reflect.Zero(field.Type())
-						} else {
-							value = value.Elem()
-						}
-					case reflect.Pointer:
-						if field.Kind() == reflect.Pointer {
-							if value.IsNil() {
-								value = reflect.Zero(field.Type())
-							}
-						} else {
-							if value.IsNil() {
-								value = reflect.Zero(field.Type())
-							} else {
-								value = value.Elem()
-							}
-						}
-					}
-					if change, err = assign(value, field, nil); err != nil {
-						return
-					}
-					changed = changed || change
-				}
+		name := iter.Key().String()
+		index, ok := fields[name]
+		if !ok {
+			continue
+		}
+		value := iter.Value()
+		field, throughPointer := structFieldValue(into, index)
+		if !field.IsValid() || !field.CanSet() {
+			err = errPathNotFound{name, tp.String()}
+			break
+		}
+		if value.Kind() == reflect.Interface {
+			if value.IsNil() {
+				value = reflect.Zero(field.Type())
+			} else {
+				value = value.Elem()
 			}
 		}
+		// Unwrapping an interface can expose a pointer.
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				value = reflect.Zero(field.Type())
+			} else if field.Kind() != reflect.Pointer {
+				value = value.Elem()
+			}
+		}
+		var candidate reflect.Value
+		var change bool
+		if candidate, change, err = stageValue(value, field, log); err != nil {
+			break
+		}
+		if change {
+			if throughPointer {
+				log.set(field, candidate)
+			} else {
+				field.Set(candidate)
+			}
+			changed = true
+		}
+	}
+	if err == nil {
+		return
+	}
+	changed = false
+	if ownsLog {
+		log.rollback()
 	}
 	return
 }
 
-// prepareAssignment returns a candidate value assignable to into's type
-// without writing to into.
-//
-// It intentionally mirrors the dispatch in [assign] rather than sharing code:
-// assign needs per-case change detection, while this must stay free of
-// comparisons and extra allocations for the slice-append paths.
-func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err error) {
+// stageNewElement returns a candidate for a new slice element.
+func stageNewElement(from, into reflect.Value) (candidate reflect.Value, err error) {
+	// Keep this dispatch separate from stageValue. The caller supplies a zero
+	// destination that cannot be observed before append, so change detection is
+	// unnecessary.
 	if err = assignable(from, into); err == nil {
 		candidate = from
 		return
 	}
 	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
 		candidate = cloneValue(into)
-		_, err = assignMap(from, candidate)
-	} else if isNumber(from.Kind()) && isNumber(into.Kind()) {
+		_, err = assignMap(from, candidate, nil)
+		return
+	}
+	if isNumber(from.Kind()) && isNumber(into.Kind()) {
 		if from.Type().ConvertibleTo(into.Type()) {
 			err = nil
 			candidate = from.Convert(into.Type())
@@ -101,41 +111,37 @@ func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err e
 	return
 }
 
-func assign(from, into reflect.Value, log *undoLog) (changed bool, err error) {
+// stageValue prepares a replacement for into.
+func stageValue(from, into reflect.Value, log *undoLog) (candidate reflect.Value, changed bool, err error) {
+	// Map candidates are shallow, so assignMap logs writes through shared
+	// pointers until the update succeeds.
 	if err = assignable(from, into); err == nil {
-		if changed = !reflect.DeepEqual(into.Interface(), from.Interface()); changed {
-			if log == nil {
-				into.Set(from)
-			} else {
-				log.set(into, from)
-			}
-		}
+		candidate = from
+		changed = !reflect.DeepEqual(into.Interface(), from.Interface())
 		return
 	}
 	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
-		candidate := cloneValue(into)
-		if changed, err = assignMap(from, candidate); err == nil {
-			if changed {
-				if log == nil {
-					into.Set(candidate)
-				} else {
-					log.set(into, candidate)
-				}
-			}
-		} else {
-			changed = false
-		}
-	} else if isNumber(from.Kind()) && isNumber(into.Kind()) {
+		candidate = cloneValue(into)
+		changed, err = assignMap(from, candidate, log)
+		return
+	}
+	if isNumber(from.Kind()) && isNumber(into.Kind()) {
 		if from.Type().ConvertibleTo(into.Type()) {
 			err = nil
-			converted := from.Convert(into.Type())
-			if changed = !into.Equal(converted); changed {
-				if log == nil {
-					into.Set(converted)
-				} else {
-					log.set(into, converted)
-				}
-			}
+			candidate = from.Convert(into.Type())
+			changed = !into.Equal(candidate)
+		}
+	}
+	return
+}
+
+func assign(from, into reflect.Value, log *undoLog) (changed bool, err error) {
+	var candidate reflect.Value
+	if candidate, changed, err = stageValue(from, into, log); err == nil && changed {
+		if log == nil {
+			into.Set(candidate)
+		} else {
+			log.set(into, candidate)
 		}
 	}
 	return
@@ -193,7 +199,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 					if !value.IsValid() {
 						value = zero
 					}
-					if candidate, err = prepareAssignment(value, zero); err != nil {
+					if candidate, err = stageNewElement(value, zero); err != nil {
 						return
 					}
 				} else {
@@ -292,11 +298,9 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 		}
 		return getSet(concrete, jspath, setting)
 	case reflect.Struct:
-		tp := v.Type()
-		for i := 0; i < tp.NumField(); i++ {
-			if sf := tp.Field(i); sf.IsExported() && matchField(sf, elem) {
-				f := v.Field(i)
-				return getSet(f, tail, setting)
+		if index, ok := cachedStructFields(v.Type())[elem]; ok {
+			if field, _ := structFieldValue(v, index); field.IsValid() {
+				return getSet(field, tail, setting)
 			}
 		}
 	}
@@ -323,6 +327,12 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 // An empty path returns obj itself unless obj is nil. Values containing maps,
 // slices, or pointers may share their backing data with obj.
 //
+// Struct components exactly match names selected by encoding/json's default
+// struct-field rules, including JSON tag names and unambiguous promoted fields.
+// Traversing a nil pointer returns an error matching [ErrPathNotFound]. An
+// unexported embedded field with an explicit JSON name cannot itself be returned,
+// although its exported fields remain accessible through longer paths.
+//
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
 // zero or more ASCII decimal digits. The index must be at most 4294967294 and
@@ -330,10 +340,10 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 func Get(obj any, jspath string) (val any, err error) {
 	rv := reflect.ValueOf(obj)
 	if rv, _, err = getSet(rv, jspath, nil); err == nil {
-		err = ErrPathNotFound
 		if rv.CanInterface() {
 			val = rv.Interface()
-			err = nil
+		} else {
+			err = errPathNotFound{jspath, reflect.TypeOf(obj).String()}
 		}
 	}
 	return
@@ -358,51 +368,44 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // and do not create new entries. A nil val stores the destination type's zero
 // value.
 //
+// Struct components and string keys in map-to-struct assignments follow [Get]'s
+// field-selection rules. Set does not allocate nil pointers; a path or map key
+// that would traverse one returns an error matching [ErrPathNotFound].
+//
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.
 func Set(obj any, jspath string, val any) (changed bool, err error) {
 	return set(obj, jspath, val, nil)
 }
 
-func setChecked(obj any, jspath string, val any, check func() error) (changed bool, err error) {
-	var log undoLog
-	committed := false
-	defer func() {
-		if !committed {
-			log.rollback()
-			changed = false
-		}
-	}()
-
-	if changed, err = set(obj, jspath, val, &log); err == nil && changed {
-		if err = check(); err == nil {
-			log.commit()
-			committed = true
-		}
-	}
-	return
-}
-
-// SetChecked updates jspath only when check accepts the resulting object.
+// SetChecked updates jspath only when check accepts the tentative result.
 //
-// SetChecked first applies the same operation as [Set]. If Set reports a write,
+// It performs the same update as [Set]. If the update reports a change,
 // SetChecked calls check exactly once while obj contains the tentative result. A
-// nil error commits the change. If check returns an error, SetChecked restores
-// obj, returns false, and returns that error unchanged. If check panics,
-// SetChecked restores obj before the panic continues. A nil check behaves like
-// [Set].
+// nil error commits the update. If check returns an error, SetChecked restores
+// obj, returns false, and returns the error unchanged. If check panics, SetChecked
+// restores obj before the panic continues. A nil check behaves like [Set].
 //
-// check is not called for an invalid operation or when Set reports no write. It
-// may inspect obj, including by calling [Get], but must not mutate obj or values
-// reachable from it, call [Set] or SetChecked on them, or retain references into
-// a rejected tentative value. Rollback covers only mutations made by SetChecked
-// itself.
+// check is not called if the update is invalid or reports no change. It may
+// inspect obj but must not mutate obj or values reachable from it, call [Set] or
+// SetChecked on them, or retain references into a rejected value. Rollback
+// restores only changes made by SetChecked.
 //
 // SetChecked does not synchronize access to obj. Callers must prevent concurrent
 // access for the entire call, including while check runs.
 func SetChecked(obj any, jspath string, val any, check func() error) (changed bool, err error) {
-	if check != nil {
-		return setChecked(obj, jspath, val, check)
+	if check == nil {
+		return Set(obj, jspath, val)
 	}
-	return set(obj, jspath, val, nil)
+
+	var log undoLog
+	defer log.rollback()
+	if changed, err = set(obj, jspath, val, &log); err == nil && changed {
+		if err = check(); err == nil {
+			log.commit()
+			return
+		}
+	}
+	changed = false
+	return
 }

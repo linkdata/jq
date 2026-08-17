@@ -2,7 +2,6 @@ package jq
 
 import "errors"
 
-// ErrInvalidReceiver indicates a nil or non-pointer receiver.
-//
-// [Set] and [SetChecked] require their first argument to be a non-nil pointer.
+// ErrInvalidReceiver indicates that [Set] or [SetChecked] received a nil or
+// non-pointer receiver.
 var ErrInvalidReceiver = errors.New("jq: invalid receiver")

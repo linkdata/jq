@@ -258,7 +258,7 @@ func TestSet_intArrayExpand(t *testing.T) {
 }
 
 func TestSet_structField(t *testing.T) {
-	var x testType = testStructVal
+	x := testStructVal
 	changed, err := jq.Set(&x, "sX", "foo!")
 	maybeError(t, err)
 	mustEqual(t, changed, true)
@@ -266,7 +266,7 @@ func TestSet_structField(t *testing.T) {
 }
 
 func TestSet_structValArrayField(t *testing.T) {
-	var x testType = testStructVal
+	x := testStructVal
 	changed, err := jq.Set(&x, "AT.0.S", "foo!")
 	maybeError(t, err)
 	mustEqual(t, changed, true)
@@ -274,7 +274,7 @@ func TestSet_structValArrayField(t *testing.T) {
 }
 
 func TestSet_structPrtArrayField(t *testing.T) {
-	var x testType = testStructVal
+	x := testStructVal
 	changed, err := jq.Set(&x, "APT.1.S", "foo!")
 	maybeError(t, err)
 	mustEqual(t, changed, true)
@@ -789,7 +789,7 @@ func TestSet_mapStructValueFieldErrorPropagates(t *testing.T) {
 
 func TestSet_unexportedPointerFieldReturnsNotFound(t *testing.T) {
 	type hasUnexported struct {
-		p *int //nolint:unused
+		p *int
 	}
 	x := hasUnexported{}
 
@@ -798,11 +798,12 @@ func TestSet_unexportedPointerFieldReturnsNotFound(t *testing.T) {
 	if !errors.Is(err, jq.ErrPathNotFound) {
 		t.Fatalf("expected ErrPathNotFound, got %v", err)
 	}
+	mustEqual(t, x.p, (*int)(nil))
 }
 
 func TestSet_unexportedValueFieldReturnsNotFound(t *testing.T) {
 	type hasUnexported struct {
-		s string //nolint:unused
+		s string
 	}
 	x := hasUnexported{}
 
@@ -811,6 +812,7 @@ func TestSet_unexportedValueFieldReturnsNotFound(t *testing.T) {
 	if !errors.Is(err, jq.ErrPathNotFound) {
 		t.Fatalf("expected ErrPathNotFound, got %v", err)
 	}
+	mustEqual(t, x.s, "")
 }
 
 func TestGet_leadingDotPath(t *testing.T) {
@@ -829,24 +831,26 @@ func TestSet_leadingDotPath(t *testing.T) {
 
 func TestSet_unexportedFieldNoError(t *testing.T) {
 	type hasUnexported struct {
-		name string //nolint:unused
+		name string
 		Name string
 	}
 	x := hasUnexported{Name: "exported"}
 	changed, err := jq.Set(&x, "", map[string]any{"name": "boom"})
 	maybeError(t, err)
 	mustEqual(t, changed, false)
+	mustEqual(t, x.name, "")
 	mustEqual(t, x.Name, "exported")
 }
 
 func TestSet_unexportedFieldSetsExported(t *testing.T) {
 	type hasUnexported struct {
-		name string //nolint:unused
+		name string
 		Name string
 	}
 	x := hasUnexported{Name: "exported"}
 	changed, err := jq.Set(&x, "", map[string]any{"Name": "new"})
 	maybeError(t, err)
 	mustEqual(t, changed, true)
+	mustEqual(t, x.name, "")
 	mustEqual(t, x.Name, "new")
 }
