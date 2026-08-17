@@ -152,6 +152,39 @@ type assignment struct {
 	log   *undoLog
 }
 
+type pointerIdentity struct {
+	typeOf  reflect.Type // the pointer type is part of the traversal state
+	pointer any          // a boxed unsafe.Pointer remains comparable and visible to the GC
+}
+
+// pointerCycleDetector uses Brent's algorithm for transparent pointer traversal.
+// Each pointer has one successor, so one moving anchor can detect a cycle.
+type pointerCycleDetector struct {
+	anchor   pointerIdentity
+	power    int
+	distance int
+}
+
+func (d *pointerCycleDetector) visit(v reflect.Value) (cycle bool) {
+	visit := pointerIdentity{typeOf: v.Type(), pointer: v.UnsafePointer()}
+	if d.power == 0 {
+		d.anchor = visit
+		d.power = 1
+		return
+	}
+	if visit == d.anchor {
+		cycle = true
+		return
+	}
+	d.distance++
+	if d.distance == d.power {
+		d.anchor = visit
+		d.power *= 2
+		d.distance = 0
+	}
+	return
+}
+
 func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Value, changed bool, err error) {
 	v = obj
 	if !v.IsValid() {
@@ -179,6 +212,33 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 			changed, err = assign(value, v, setting.log)
 		}
 		return
+	}
+	var cycleDetector pointerCycleDetector
+	var followedPointer bool
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+			return
+		}
+		if v.Kind() == reflect.Pointer {
+			// A cycle repeats, so omitting the first pointer still detects it while
+			// avoiding detector work for ordinary one-pointer traversal.
+			if followedPointer {
+				if cycleDetector.visit(v) {
+					err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+					return
+				}
+			}
+			followedPointer = true
+			v = v.Elem()
+			continue
+		}
+		concrete := v.Elem()
+		if set && concrete.Kind() == reflect.Struct && !concrete.CanSet() {
+			err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
+			return
+		}
+		v = concrete
 	}
 	switch v.Kind() {
 	case reflect.Array, reflect.Slice:
@@ -278,23 +338,6 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 				return
 			}
 		}
-	case reflect.Pointer:
-		if v.IsNil() {
-			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-			return
-		}
-		return getSet(v.Elem(), jspath, setting)
-	case reflect.Interface:
-		if v.IsNil() {
-			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-			return
-		}
-		concrete := v.Elem()
-		if set && jspath != "" && concrete.Kind() == reflect.Struct && !concrete.CanSet() {
-			err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
-			return
-		}
-		return getSet(concrete, jspath, setting)
 	case reflect.Struct:
 		if index, ok := cachedStructFields(v.Type())[elem]; ok {
 			if field, _ := structFieldValue(v, index); field.IsValid() {
@@ -342,8 +385,8 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 // exact `json:"-"` tag excludes a field from the path namespace. Get and [Set]
 // can traverse an explicitly named unexported embedded field on paths to
 // reachable exported fields, but a path ending at the embedded field returns an
-// error matching [ErrPathNotFound]. Traversing a nil pointer returns the same
-// error.
+// error matching [ErrPathNotFound]. Traversing a nil pointer or an unresolved
+// pointer/interface cycle returns the same error.
 //
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
@@ -384,8 +427,8 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // field-selection rules. Set can traverse an explicitly named unexported
 // embedded field to update a reachable exported field. A path ending at the
 // embedded field, or a map-to-struct key selecting it, returns an error matching
-// [ErrPathNotFound]. Set does not allocate nil pointers; a path traversing one
-// returns the same error.
+// [ErrPathNotFound]. Set does not allocate nil pointers. Traversing a nil pointer
+// or an unresolved pointer/interface cycle returns the same error.
 //
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.
