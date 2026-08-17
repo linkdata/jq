@@ -64,6 +64,17 @@ func main() {
 }
 ```
 
+## Struct fields
+
+Struct path components exactly match names selected by `encoding/json`'s default
+field-selection rules, including JSON tag names and unambiguous promoted fields.
+Reachable exported fields promoted through unexported embedded structs are
+readable with `Get` and writable with `Set`, including through map-to-struct
+assignments.
+
+An exact `json:"-"` tag excludes a field from path traversal and map-to-struct
+assignments.
+
 ## Checked updates
 
 `SetChecked` tentatively applies the same operation as `Set`, then calls a
