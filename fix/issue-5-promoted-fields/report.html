@@ -209,6 +209,7 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
                                 value = value.Elem()
                         }</span>
                 }
+                // Unwrapping an interface can expose a pointer.
                 <span class="cov8" title="1">if value.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
                         if value.IsNil() </span><span class="cov8" title="1">{
                                 value = reflect.Zero(field.Type())
@@ -495,7 +496,7 @@ func Get(obj any, jspath string) (val any, err error) <span class="cov8" title="
                 if rv.CanInterface() </span><span class="cov8" title="1">{
                         val = rv.Interface()
                 }</span> else<span class="cov8" title="1"> {
-                        err = errPathNotFound{jspath, rv.Type().String()}
+                        err = errPathNotFound{jspath, reflect.TypeOf(obj).String()}
                 }</span>
         }
         <span class="cov8" title="1">return</span>
@@ -642,7 +643,7 @@ func resolveStructFields(tp reflect.Type) (resolved map[string][]int) <span clas
                                 case tagged == current.tagged:<span class="cov8" title="1">
                                         current.ambiguous = true
                                         selected[name] = current</span>
-                                default:<span class="cov0" title="0"></span>
+                                default:<span class="cov8" title="1"></span>
                                         // The existing tagged field wins at this depth.
                                 }
                                 <span class="cov8" title="1">continue</span>
