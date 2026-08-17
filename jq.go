@@ -110,9 +110,10 @@ func stageNewElement(from, into reflect.Value) (candidate reflect.Value, err err
 	return
 }
 
-// stageValue prepares a replacement for into. Map candidates are shallow, so
-// assignMap logs writes through shared pointers until the update succeeds.
+// stageValue prepares a replacement for into.
 func stageValue(from, into reflect.Value, log *undoLog) (candidate reflect.Value, changed bool, err error) {
+	// Map candidates are shallow, so assignMap logs writes through shared
+	// pointers until the update succeeds.
 	if err = assignable(from, into); err == nil {
 		candidate = from
 		changed = !reflect.DeepEqual(into.Interface(), from.Interface())
@@ -325,15 +326,11 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 // An empty path returns obj itself unless obj is nil. Values containing maps,
 // slices, or pointers may share their backing data with obj.
 //
-// Each component traversing a struct exactly matches a field name selected by
-// encoding/json's default struct-field rules. This includes JSON tag names and
-// unambiguous fields promoted from anonymous embedded structs. Traversal through
-// a nil pointer, including a nil anonymous pointer, returns an error matching
-// [ErrPathNotFound].
-//
-// Selecting an explicitly named unexported embedded field directly returns an
-// error matching [ErrPathNotFound]. Exported fields below it remain accessible
-// through a longer path.
+// Struct components exactly match names selected by encoding/json's default
+// struct-field rules, including JSON tag names and unambiguous promoted fields.
+// Traversing a nil pointer returns an error matching [ErrPathNotFound]. An
+// unexported embedded field with an explicit JSON name cannot itself be returned,
+// although its exported fields remain accessible through longer paths.
 //
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
@@ -370,11 +367,9 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // and do not create new entries. A nil val stores the destination type's zero
 // value.
 //
-// Struct components follow the field-selection rules documented by [Get]. Map
-// values assigned to structs match string keys by the same rules. Set does not
-// allocate nil pointers encountered during traversal, including nil anonymous
-// pointers; such paths return an error matching [ErrPathNotFound]. A map key
-// that resolves through a nil anonymous pointer returns the same error.
+// Struct components and string keys in map-to-struct assignments follow [Get]'s
+// field-selection rules. Set does not allocate nil pointers; a path or map key
+// that would traverse one returns an error matching [ErrPathNotFound].
 //
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.
@@ -382,20 +377,18 @@ func Set(obj any, jspath string, val any) (changed bool, err error) {
 	return set(obj, jspath, val, nil)
 }
 
-// SetChecked updates jspath only when check accepts the resulting object.
+// SetChecked updates jspath only when check accepts the tentative result.
 //
-// SetChecked first applies the same operation as [Set]. If Set reports a write,
+// It performs the same update as [Set]. If the update reports a change,
 // SetChecked calls check exactly once while obj contains the tentative result. A
-// nil error commits the change. If check returns an error, SetChecked restores
-// obj, returns false, and returns that error unchanged. If check panics,
-// SetChecked restores obj before the panic continues. A nil check behaves like
-// [Set].
+// nil error commits the update. If check returns an error, SetChecked restores
+// obj, returns false, and returns the error unchanged. If check panics, SetChecked
+// restores obj before the panic continues. A nil check behaves like [Set].
 //
-// check is not called for an invalid operation or when Set reports no write. It
-// may inspect obj, including by calling [Get], but must not mutate obj or values
-// reachable from it, call [Set] or SetChecked on them, or retain references into
-// a rejected tentative value. Rollback covers only mutations made by SetChecked
-// itself.
+// check is not called if the update is invalid or reports no change. It may
+// inspect obj but must not mutate obj or values reachable from it, call [Set] or
+// SetChecked on them, or retain references into a rejected value. Rollback
+// restores only changes made by SetChecked.
 //
 // SetChecked does not synchronize access to obj. Callers must prevent concurrent
 // access for the entire call, including while check runs.

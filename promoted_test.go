@@ -41,24 +41,6 @@ type promotedUntaggedOuter struct {
 	promotedUntagged
 }
 
-// PromotedLeft is a reflection fixture for ambiguous field promotion.
-type PromotedLeft struct {
-	Value int `json:"value"`
-}
-
-// PromotedRight is a reflection fixture for ambiguous field promotion.
-type PromotedRight struct {
-	Value int `json:"value"`
-}
-
-// PromotedNamedPointerTarget is a reflection fixture for named pointers.
-type PromotedNamedPointerTarget struct {
-	Nested int
-}
-
-// PromotedNamedPointer is a reflection fixture for anonymous named pointers.
-type PromotedNamedPointer *PromotedNamedPointerTarget
-
 func jsonSnapshot(t *testing.T, value any) string {
 	t.Helper()
 	data, err := json.Marshal(value)
@@ -366,6 +348,12 @@ func TestPromotedFieldDominance(t *testing.T) {
 }
 
 func TestPromotedFieldAmbiguity(t *testing.T) {
+	type PromotedLeft struct {
+		Value int `json:"value"`
+	}
+	type PromotedRight struct {
+		Value int `json:"value"`
+	}
 	typeOf := reflect.StructOf([]reflect.StructField{
 		{Name: "PromotedLeft", Type: reflect.TypeFor[PromotedLeft](), Anonymous: true},
 		{Name: "PromotedRight", Type: reflect.TypeFor[PromotedRight](), Anonymous: true},
@@ -529,6 +517,10 @@ func TestPromotedFieldSelectionDetails(t *testing.T) {
 	})
 
 	t.Run("anonymous named pointer", func(t *testing.T) {
+		type PromotedNamedPointerTarget struct {
+			Nested int
+		}
+		type PromotedNamedPointer *PromotedNamedPointerTarget
 		typeOf := reflect.StructOf([]reflect.StructField{
 			{Name: "PromotedNamedPointer", Type: reflect.TypeFor[PromotedNamedPointer](), Anonymous: true},
 		})

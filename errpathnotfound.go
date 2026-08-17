@@ -2,7 +2,7 @@ package jq
 
 import "fmt"
 
-// ErrPathNotFound is returned when a JSON path can't be resolved
+// ErrPathNotFound is returned when a JSON path cannot be resolved.
 var ErrPathNotFound errPathNotFound
 
 type errPathNotFound struct {

@@ -129,8 +129,8 @@ func validJSONFieldName(name string) (valid bool) {
 	return true
 }
 
-// structFieldValue follows index without allocating pointers and reports whether
-// it dereferenced one. A nil pointer returns an invalid field.
+// structFieldValue follows index without initializing nil pointers and reports
+// whether it dereferenced one. A nil pointer returns an invalid field.
 func structFieldValue(value reflect.Value, index []int) (field reflect.Value, throughPointer bool) {
 	field = value
 	for _, i := range index {
