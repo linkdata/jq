@@ -394,8 +394,12 @@ func TestPromotedFieldSelectionDetails(t *testing.T) {
 		if !errors.Is(err, jq.ErrPathNotFound) {
 			t.Fatalf("Get(inner) error = %v, want ErrPathNotFound", err)
 		}
-		if got, want := err.Error(), `jq: "inner" not found in jq_test.promotedEmbedded`; got != want {
+		if got, want := err.Error(), `jq: "inner" not found in *jq_test.outer`; got != want {
 			t.Fatalf("Get(inner) error = %q, want %q", got, want)
+		}
+		for _, path := range []string{"inner.", "inner.."} {
+			_, err = jq.Get(&value, path)
+			requirePathNotFound(t, err)
 		}
 		got, err := jq.Get(&value, "inner.value")
 		if err != nil || got != 7 {

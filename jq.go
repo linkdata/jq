@@ -56,6 +56,7 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 				value = value.Elem()
 			}
 		}
+		// Unwrapping an interface can expose a pointer.
 		if value.Kind() == reflect.Pointer {
 			if value.IsNil() {
 				value = reflect.Zero(field.Type())
@@ -342,7 +343,7 @@ func Get(obj any, jspath string) (val any, err error) {
 		if rv.CanInterface() {
 			val = rv.Interface()
 		} else {
-			err = errPathNotFound{jspath, rv.Type().String()}
+			err = errPathNotFound{jspath, reflect.TypeOf(obj).String()}
 		}
 	}
 	return

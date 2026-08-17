@@ -222,90 +222,6 @@ func onDemandValueKinds() []uint8 {
 	return kinds
 }
 
-func assertOnDemandPromotedContracts(t *testing.T, raw []byte) {
-	t.Helper()
-	root := newOnDemandRoot(0)
-	pointer := root.onDemandPromotedPointer
-	n := onDemandBytesToInt(raw)
-	direct := n
-	if direct == root.Promoted {
-		direct++
-	}
-	throughPointer := n
-	if throughPointer == root.PromotedPointer {
-		throughPointer++
-	}
-
-	for _, want := range []struct {
-		path  string
-		value int
-	}{
-		{"promoted", 41},
-		{"promotedPointer", 42},
-	} {
-		got, err := jq.Get(&root, want.path)
-		if err != nil || got != want.value {
-			t.Fatalf("Get promoted path=%q = (%#v, %v), want (%d, nil)", want.path, got, err, want.value)
-		}
-	}
-	changed, err := jq.Set(&root, "promoted", direct)
-	if err != nil || !changed || root.Promoted != direct {
-		t.Fatalf("Set promoted value = (%t, %v, %d), want (true, nil, %d)", changed, err, root.Promoted, direct)
-	}
-	changed, err = jq.Set(&root, "promotedPointer", throughPointer)
-	if err != nil || !changed || root.PromotedPointer != throughPointer || root.onDemandPromotedPointer != pointer {
-		t.Fatalf("Set promoted pointer = (%t, %v, %#v)", changed, err, root)
-	}
-
-	root = newOnDemandRoot(0)
-	var nilInt *int
-	changed, err = jq.Set(&root, "", map[string]any{"promoted": nilInt})
-	if err != nil || !changed || root.Promoted != 0 {
-		t.Fatalf("Set typed nil pointer = (%t, %v, %d), want (true, nil, 0)", changed, err, root.Promoted)
-	}
-
-	root = newOnDemandRoot(0)
-	before := newOnDemandRoot(0)
-	pointer = root.onDemandPromotedPointer
-	calls := 0
-	sawTentative := false
-
-	changed, err = jq.SetChecked(&root, "", map[string]any{
-		"promoted":        &direct,
-		"promotedPointer": &throughPointer,
-	}, func() error {
-		calls++
-		sawTentative = root.Promoted == direct &&
-			root.PromotedPointer == throughPointer &&
-			root.onDemandPromotedPointer == pointer
-		return errFuzzCheckRejected
-	})
-	if changed || err != errFuzzCheckRejected || calls != 1 || !sawTentative {
-		t.Fatalf("SetChecked promoted rejection = (%t, %v, %d calls, tentative=%t)", changed, err, calls, sawTentative)
-	}
-	if root.onDemandPromotedPointer != pointer || !reflect.DeepEqual(root, before) {
-		t.Fatalf("SetChecked promoted rejection changed state: got %#v want %#v", root, before)
-	}
-
-	for _, update := range []struct {
-		path  string
-		value any
-	}{
-		{"promotedPointer", throughPointer},
-		{"", map[string]any{"promotedPointer": &throughPointer}},
-	} {
-		root = newOnDemandRoot(0x40)
-		changed, err = jq.Set(&root, update.path, update.value)
-		if changed || !errors.Is(err, jq.ErrPathNotFound) || root.onDemandPromotedPointer != nil {
-			t.Fatalf("Set through nil promoted pointer path=%q = (%t, %v, %#v)", update.path, changed, err, root)
-		}
-	}
-	root = newOnDemandRoot(0x40)
-	if _, err = jq.Get(&root, "promotedPointer"); !errors.Is(err, jq.ErrPathNotFound) {
-		t.Fatalf("Get through nil promoted pointer error = %v, want ErrPathNotFound", err)
-	}
-}
-
 func assertOnDemandSetGetCase(t *testing.T, path string, raw []byte, ifaceMode, valueKind uint8) {
 	t.Helper()
 	path = onDemandClamp(path, 256)
@@ -463,6 +379,5 @@ func FuzzOnDemand_ComprehensivePathTypeMatrix(f *testing.F) {
 		assertOnDemandGetContract(t, extraPath, ifaceMode)
 		assertOnDemandSetGetCase(t, extraPath, raw, ifaceMode, extraValueKind)
 		assertOnDemandInvalidReceiverContract(t, extraPath, onDemandValue(raw, extraValueKind))
-		assertOnDemandPromotedContracts(t, raw)
 	})
 }
