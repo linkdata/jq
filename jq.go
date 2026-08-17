@@ -6,19 +6,6 @@ import (
 	"strings"
 )
 
-func matchField(f reflect.StructField, want string) (yes bool) {
-	name := f.Name
-	if tag, ok := f.Tag.Lookup("json"); ok {
-		if tag, _, _ = strings.Cut(tag, ","); tag != "" {
-			if tag == "-" {
-				return false
-			}
-			name = tag
-		}
-	}
-	return name == want
-}
-
 func assignable(from, into reflect.Value) (err error) {
 	if !from.Type().AssignableTo(into.Type()) {
 		err = errTypeMismatch{into.Type(), from.Type()}
@@ -36,50 +23,76 @@ func isNumber(k reflect.Kind) bool {
 	return false
 }
 
-func assignMap(from, into reflect.Value) (changed bool, err error) {
+func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error) {
 	tp := into.Type()
+	if from.Type().Key().Kind() != reflect.String {
+		return
+	}
+	// A staged struct still shares data reached through pointers. The outermost
+	// update owns the log that makes writes through them atomic.
+	var local undoLog
+	ownsLog := log == nil
+	if ownsLog {
+		log = &local
+	}
+	fields := cachedStructFields(tp)
 	iter := from.MapRange()
 	for iter.Next() {
-		if iter.Key().Kind() == reflect.String {
-			keystring := iter.Key().String()
-			for i := range tp.NumField() {
-				if sf := tp.Field(i); sf.IsExported() && matchField(sf, keystring) {
-					var change bool
-					field := into.Field(i)
-					value := iter.Value()
-					switch value.Kind() {
-					case reflect.Interface:
-						if value.IsNil() {
-							value = reflect.Zero(field.Type())
-						} else {
-							value = value.Elem()
-						}
-					case reflect.Pointer:
-						if field.Kind() == reflect.Pointer {
-							if value.IsNil() {
-								value = reflect.Zero(field.Type())
-							}
-						} else {
-							if value.IsNil() {
-								value = reflect.Zero(field.Type())
-							} else {
-								value = value.Elem()
-							}
-						}
-					}
-					if change, err = assign(value, field, nil); err != nil {
-						return
-					}
-					changed = changed || change
-				}
+		name := iter.Key().String()
+		index, ok := fields[name]
+		if !ok {
+			continue
+		}
+		value := iter.Value()
+		field, indirect := structFieldValue(into, index)
+		if !field.IsValid() || !field.CanSet() {
+			err = errPathNotFound{name, tp.String()}
+			break
+		}
+		switch value.Kind() {
+		case reflect.Interface:
+			if value.IsNil() {
+				value = reflect.Zero(field.Type())
+			} else {
+				value = value.Elem()
 			}
+		case reflect.Pointer:
+			if field.Kind() == reflect.Pointer {
+				if value.IsNil() {
+					value = reflect.Zero(field.Type())
+				}
+			} else if value.IsNil() {
+				value = reflect.Zero(field.Type())
+			} else {
+				value = value.Elem()
+			}
+		}
+		var change bool
+		if indirect {
+			change, err = assign(value, field, log)
+		} else {
+			change, err = assignStaged(value, field, log)
+		}
+		if err != nil {
+			break
+		}
+		changed = changed || change
+	}
+	if ownsLog {
+		if err == nil {
+			log.commit()
+		} else {
+			log.rollback()
+			changed = false
 		}
 	}
 	return
 }
 
-// prepareAssignment returns a candidate value assignable to into's type
-// without writing to into.
+// prepareAssignment returns a candidate for a new slice element.
+//
+// Its caller supplies a zero destination, so preparing the candidate cannot
+// mutate data reachable from the existing slice.
 //
 // It intentionally mirrors the dispatch in [assign] rather than sharing code:
 // assign needs per-case change detection, while this must stay free of
@@ -91,7 +104,7 @@ func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err e
 	}
 	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
 		candidate = cloneValue(into)
-		_, err = assignMap(from, candidate)
+		_, err = assignMap(from, candidate, nil)
 	} else if isNumber(from.Kind()) && isNumber(into.Kind()) {
 		if from.Type().ConvertibleTo(into.Type()) {
 			err = nil
@@ -102,9 +115,17 @@ func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err e
 }
 
 func assign(from, into reflect.Value, log *undoLog) (changed bool, err error) {
+	return assignValue(from, into, log, false)
+}
+
+func assignStaged(from, into reflect.Value, log *undoLog) (changed bool, err error) {
+	return assignValue(from, into, log, true)
+}
+
+func assignValue(from, into reflect.Value, log *undoLog, staged bool) (changed bool, err error) {
 	if err = assignable(from, into); err == nil {
 		if changed = !reflect.DeepEqual(into.Interface(), from.Interface()); changed {
-			if log == nil {
+			if log == nil || staged {
 				into.Set(from)
 			} else {
 				log.set(into, from)
@@ -114,9 +135,9 @@ func assign(from, into reflect.Value, log *undoLog) (changed bool, err error) {
 	}
 	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
 		candidate := cloneValue(into)
-		if changed, err = assignMap(from, candidate); err == nil {
+		if changed, err = assignMap(from, candidate, log); err == nil {
 			if changed {
-				if log == nil {
+				if log == nil || staged {
 					into.Set(candidate)
 				} else {
 					log.set(into, candidate)
@@ -130,7 +151,7 @@ func assign(from, into reflect.Value, log *undoLog) (changed bool, err error) {
 			err = nil
 			converted := from.Convert(into.Type())
 			if changed = !into.Equal(converted); changed {
-				if log == nil {
+				if log == nil || staged {
 					into.Set(converted)
 				} else {
 					log.set(into, converted)
@@ -292,11 +313,9 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 		}
 		return getSet(concrete, jspath, setting)
 	case reflect.Struct:
-		tp := v.Type()
-		for i := 0; i < tp.NumField(); i++ {
-			if sf := tp.Field(i); sf.IsExported() && matchField(sf, elem) {
-				f := v.Field(i)
-				return getSet(f, tail, setting)
+		if index, ok := cachedStructFields(v.Type())[elem]; ok {
+			if field, _ := structFieldValue(v, index); field.IsValid() {
+				return getSet(field, tail, setting)
 			}
 		}
 	}
@@ -322,6 +341,12 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 //
 // An empty path returns obj itself unless obj is nil. Values containing maps,
 // slices, or pointers may share their backing data with obj.
+//
+// Each component traversing a struct exactly matches a field name selected by
+// encoding/json's default struct-field rules. This includes JSON tag names and
+// unambiguous fields promoted from anonymous embedded structs. Traversal through
+// a nil pointer, including a nil anonymous pointer, returns an error matching
+// [ErrPathNotFound].
 //
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
@@ -357,6 +382,11 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // the slice's current length. Map paths address existing string-keyed entries
 // and do not create new entries. A nil val stores the destination type's zero
 // value.
+//
+// Struct components follow the field-selection rules documented by [Get]. Map
+// values assigned to structs match string keys by the same rules. Set does not
+// allocate nil pointers encountered during traversal, including nil anonymous
+// pointers; such paths return an error matching [ErrPathNotFound].
 //
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.

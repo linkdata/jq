@@ -24,6 +24,18 @@ type benchmarkSetPair struct {
 	Right int
 }
 
+type benchmarkPromotedValue struct {
+	Value int `json:"value"`
+}
+
+type benchmarkPromotedState struct {
+	benchmarkPromotedValue
+}
+
+type benchmarkPromotedPointerState struct {
+	*benchmarkPromotedValue
+}
+
 func BenchmarkSet(b *testing.B) {
 	b.Run("Scalar", func(b *testing.B) {
 		var value int
@@ -44,6 +56,18 @@ func BenchmarkSet(b *testing.B) {
 		for b.Loop() {
 			i++
 			if _, err := jq.Set(&value, "Child.Value", i); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("PromotedField", func(b *testing.B) {
+		value := benchmarkPromotedState{}
+		i := 0
+		b.ReportAllocs()
+		for b.Loop() {
+			i++
+			if _, err := jq.Set(&value, "value", i); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -128,6 +152,19 @@ func BenchmarkSet(b *testing.B) {
 		for b.Loop() {
 			i++
 			if _, err := jq.Set(&value, "Pair", inputs[i&1]); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("PromotedMapToStruct", func(b *testing.B) {
+		value := benchmarkPromotedPointerState{benchmarkPromotedValue: &benchmarkPromotedValue{}}
+		inputs := [2]map[string]any{{"value": 1}, {"value": 2}}
+		i := 0
+		b.ReportAllocs()
+		for b.Loop() {
+			i++
+			if _, err := jq.Set(&value, "", inputs[i&1]); err != nil {
 				b.Fatal(err)
 			}
 		}

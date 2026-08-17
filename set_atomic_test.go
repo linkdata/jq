@@ -189,14 +189,14 @@ func TestSetInterfaceArrayElementReturnsNotFound(t *testing.T) {
 
 func TestSetMapToStructFailureIsAtomic(t *testing.T) {
 	typeOf := reflect.StructOf([]reflect.StructField{
-		{Name: "Number", Type: reflect.TypeFor[int](), Tag: `json:"value"`},
-		{Name: "Text", Type: reflect.TypeFor[string](), Tag: `json:"value"`},
+		{Name: "Number", Type: reflect.TypeFor[int](), Tag: `json:"number"`},
+		{Name: "Text", Type: reflect.TypeFor[string](), Tag: `json:"text"`},
 	})
 	value := reflect.New(typeOf)
 	value.Elem().FieldByName("Number").SetInt(1)
 	value.Elem().FieldByName("Text").SetString("original")
 
-	changed, err := jq.Set(value.Interface(), "", map[string]any{"value": 2})
+	changed, err := jq.Set(value.Interface(), "", map[string]any{"number": 2, "text": 2})
 	if changed {
 		t.Fatal("Set reported a change on error")
 	}
