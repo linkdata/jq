@@ -21,6 +21,14 @@ type promotedPointer struct {
 	*promotedEmbedded
 }
 
+type promotedTagged struct {
+	promotedEmbedded `json:"inner"`
+}
+
+type promotedTaggedPointer struct {
+	*promotedEmbedded `json:"inner"`
+}
+
 type promotedLeaf struct {
 	Leaf int `json:"leaf"`
 }
@@ -112,6 +120,132 @@ func TestPromotedFieldMapAssignment(t *testing.T) {
 		}
 		if value.promotedEmbedded != embedded || embedded.Value != 42 {
 			t.Fatalf("pointer/value = %p/%d; want %p/42", value.promotedEmbedded, embedded.Value, embedded)
+		}
+	})
+}
+
+func TestTaggedUnexportedFieldReachability(t *testing.T) {
+	t.Run("embedded field endpoint", func(t *testing.T) {
+		value := promotedTagged{promotedEmbedded: promotedEmbedded{Value: 7}}
+		embedded := &promotedEmbedded{Value: 7}
+		pointer := promotedTaggedPointer{promotedEmbedded: embedded}
+		tests := []struct {
+			name      string
+			obj       any
+			unchanged func() bool
+			wantError string
+		}{
+			{"value", &value, func() bool { return value.Value == 7 }, `jq: "inner" not found in jq_test.promotedTagged`},
+			{"pointer", &pointer, func() bool { return pointer.promotedEmbedded == embedded && embedded.Value == 7 }, `jq: "inner" not found in jq_test.promotedTaggedPointer`},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				for _, path := range []string{"inner", "inner.", "inner.."} {
+					t.Run(path, func(t *testing.T) {
+						changed, err := jq.Set(tc.obj, path, promotedEmbedded{Value: 8})
+						if changed || !tc.unchanged() {
+							t.Fatalf("Set(%q) = %t, %v; want false, ErrPathNotFound, and unchanged", path, changed, err)
+						}
+						requirePathNotFound(t, err)
+						if got := err.Error(); got != tc.wantError {
+							t.Fatalf("Set(%q) error = %q, want %q", path, got, tc.wantError)
+						}
+					})
+				}
+			})
+		}
+	})
+
+	t.Run("missing descendant", func(t *testing.T) {
+		value := promotedTagged{promotedEmbedded: promotedEmbedded{Value: 7}}
+		_, getErr := jq.Get(&value, "inner.nope")
+		requirePathNotFound(t, getErr)
+		changed, setErr := jq.Set(&value, "inner.nope", 8)
+		if changed || value.Value != 7 {
+			t.Fatalf("Set = %t, %v; value = %d; want false, ErrPathNotFound, 7", changed, setErr, value.Value)
+		}
+		requirePathNotFound(t, setErr)
+		want := `jq: "nope" not found in jq_test.promotedEmbedded`
+		if getErr.Error() != want || setErr.Error() != want {
+			t.Fatalf("Get/Set errors = %q / %q; want %q", getErr, setErr, want)
+		}
+	})
+
+	t.Run("nested embedded field endpoint", func(t *testing.T) {
+		type taggedMiddle struct {
+			promotedEmbedded `json:"b"`
+		}
+		type taggedOuter struct {
+			taggedMiddle `json:"a"`
+		}
+		value := taggedOuter{taggedMiddle: taggedMiddle{promotedEmbedded: promotedEmbedded{Value: 7}}}
+		changed, err := jq.Set(&value, "a.b", promotedEmbedded{Value: 8})
+		if changed || value.Value != 7 {
+			t.Fatalf("Set(a.b) = %t, %v; value = %d; want false, ErrPathNotFound, 7", changed, err, value.Value)
+		}
+		requirePathNotFound(t, err)
+		if got, want := err.Error(), `jq: "b" not found in jq_test.taggedMiddle`; got != want {
+			t.Fatalf("Set(a.b) error = %q, want %q", got, want)
+		}
+		changed, err = jq.Set(&value, "a.b.value", 8)
+		if err != nil || !changed || value.Value != 8 {
+			t.Fatalf("Set(a.b.value) = %t, %v; value = %d; want true, nil, 8", changed, err, value.Value)
+		}
+	})
+
+	t.Run("exported descendant", func(t *testing.T) {
+		value := promotedTagged{promotedEmbedded: promotedEmbedded{Value: 7}}
+		changed, err := jq.Set(&value, "inner.value", 8)
+		if err != nil || !changed {
+			t.Fatalf("Set(inner.value) = %t, %v; want true, nil", changed, err)
+		}
+		if got := jsonSnapshot(t, value); got != `{"inner":{"value":8}}` {
+			t.Fatalf("json.Marshal after Set = %s", got)
+		}
+	})
+
+	t.Run("map element descendant", func(t *testing.T) {
+		value := map[string]promotedTagged{
+			"key": {promotedEmbedded: promotedEmbedded{Value: 7}},
+		}
+		changed, err := jq.Set(&value, "key.inner.value", 8)
+		if err != nil || !changed || value["key"].Value != 8 {
+			t.Fatalf("Set = %t, %v; value = %d; want true, nil, 8", changed, err, value["key"].Value)
+		}
+	})
+
+	t.Run("checked inspection and rollback", func(t *testing.T) {
+		embedded := &promotedEmbedded{Value: 7}
+		value := promotedTaggedPointer{promotedEmbedded: embedded}
+		rejected := errors.New("rejected")
+		checks := 0
+		changed, err := jq.SetChecked(&value, "inner.value", 8, func() error {
+			checks++
+			_, getErr := jq.Get(&value, "inner")
+			requirePathNotFound(t, getErr)
+			got, getErr := jq.Get(&value, "inner.value")
+			if getErr != nil || got != 8 {
+				t.Fatalf("Get(inner.value) = %#v, %v; want 8, nil", got, getErr)
+			}
+			return rejected
+		})
+		if changed || err != rejected || checks != 1 {
+			t.Fatalf("SetChecked = %t, %v; checks = %d; want false, rejection, 1", changed, err, checks)
+		}
+		if value.promotedEmbedded != embedded || embedded.Value != 7 {
+			t.Fatalf("pointer/value = %p/%d, want %p/7", value.promotedEmbedded, embedded.Value, embedded)
+		}
+	})
+
+	t.Run("map assignment endpoint", func(t *testing.T) {
+		value := promotedTagged{promotedEmbedded: promotedEmbedded{Value: 7}}
+		changed, err := jq.Set(&value, "", map[string]any{"inner": map[string]any{"value": 8}})
+		if changed || value.Value != 7 {
+			t.Fatalf("Set = %t, %v; value = %d; want false, ErrPathNotFound, 7", changed, err, value.Value)
+		}
+		requirePathNotFound(t, err)
+		if got, want := err.Error(), `jq: "inner" not found in jq_test.promotedTagged`; got != want {
+			t.Fatalf("Set error = %q, want %q", got, want)
 		}
 	})
 }
@@ -383,10 +517,7 @@ func TestPromotedFieldAmbiguity(t *testing.T) {
 
 func TestPromotedFieldSelectionDetails(t *testing.T) {
 	t.Run("explicit anonymous name", func(t *testing.T) {
-		type outer struct {
-			promotedEmbedded `json:"inner"`
-		}
-		value := outer{promotedEmbedded{Value: 7}}
+		value := promotedTagged{promotedEmbedded{Value: 7}}
 		if got := jsonSnapshot(t, value); got != `{"inner":{"value":7}}` {
 			t.Fatalf("json.Marshal = %s", got)
 		}
@@ -394,7 +525,7 @@ func TestPromotedFieldSelectionDetails(t *testing.T) {
 		if !errors.Is(err, jq.ErrPathNotFound) {
 			t.Fatalf("Get(inner) error = %v, want ErrPathNotFound", err)
 		}
-		if got, want := err.Error(), `jq: "inner" not found in *jq_test.outer`; got != want {
+		if got, want := err.Error(), `jq: "inner" not found in *jq_test.promotedTagged`; got != want {
 			t.Fatalf("Get(inner) error = %q, want %q", got, want)
 		}
 		for _, path := range []string{"inner.", "inner.."} {
