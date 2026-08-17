@@ -64,6 +64,16 @@ func main() {
 }
 ```
 
+## Struct fields
+
+Struct path components follow `encoding/json`'s default field-selection rules,
+including JSON tag names and unambiguous promoted fields. Promotion reaches
+exported fields of unexported embedded structs, so `Get` can read them and `Set`
+can write them through either an explicit path or a map-to-struct assignment.
+
+Use `json:"-"` on fields that must be excluded from jq's path namespace. The tag
+prevents reads and writes through `Get`, `Set`, and `SetChecked`.
+
 ## Checked updates
 
 `SetChecked` tentatively applies the same operation as `Set`, then calls a

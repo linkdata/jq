@@ -427,6 +427,10 @@ func TestPromotedFieldSelectionDetails(t *testing.T) {
 			t.Fatalf("Set = %t, %v; Secret = %d; want unchanged", changed, err, value.Secret)
 		}
 		requirePathNotFound(t, err)
+		changed, err = jq.Set(&value, "", map[string]any{"Secret": 8})
+		if err != nil || changed || value.Secret != 7 {
+			t.Fatalf("map Set = %t, %v; Secret = %d; want false, nil, 7", changed, err, value.Secret)
+		}
 	})
 
 	t.Run("nil anonymous pointer", func(t *testing.T) {
