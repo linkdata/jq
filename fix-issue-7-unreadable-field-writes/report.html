@@ -453,13 +453,8 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
         case reflect.Struct:<span class="cov8" title="1">
                 if index, ok := cachedStructFields(v.Type())[elem]; ok </span><span class="cov8" title="1">{
                         if field, _ := structFieldValue(v, index); field.IsValid() </span><span class="cov8" title="1">{
-                                // A write cannot traverse a component that Get cannot return.
-                                if set &amp;&amp; !field.CanInterface() </span><span class="cov8" title="1">{
-                                        err = errPathNotFound{elem, v.Type().String()}
-                                        return
-                                }</span>
-                                <span class="cov8" title="1">return getSet(field, tail, setting)</span>
-                        }
+                                return getSet(field, tail, setting)
+                        }</span>
                 }
         }
         <span class="cov8" title="1">err = errPathNotFound{elem, v.Type().String()}
@@ -489,10 +484,10 @@ func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" 
 // struct-field rules, including JSON tag names and unambiguous promoted fields.
 // Exported fields promoted through unexported embedded structs are readable with
 // Get and writable with [Set], including through map-to-struct assignments. An
-// exact `json:"-"` tag excludes a field from the path namespace. An
-// unexported embedded field with an explicit JSON name cannot itself be returned,
-// but its exported fields can be read through longer paths when reachable.
-// Traversing a nil pointer returns an error matching [ErrPathNotFound].
+// exact `json:"-"` tag excludes a field from the path namespace. Get and [Set]
+// can traverse an explicitly named unexported embedded field to reach selected
+// exported fields, but a path ending at the embedded field returns an error
+// matching [ErrPathNotFound]. Traversing a nil pointer returns the same error.
 //
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
@@ -530,9 +525,11 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // value.
 //
 // Struct components and string keys in map-to-struct assignments follow [Get]'s
-// field-selection rules. Set does not allocate nil pointers. A path or map key
-// that would assign to or traverse a struct field that [Get] cannot return, or
-// traverse a nil pointer, returns an error matching [ErrPathNotFound].
+// field-selection rules. Set can traverse an explicitly named unexported
+// embedded field to update a selected exported field. A path ending at the
+// embedded field, or a map-to-struct key selecting it, returns an error matching
+// [ErrPathNotFound]. Set does not allocate nil pointers; a path traversing one
+// returns the same error.
 //
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.
