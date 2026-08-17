@@ -126,7 +126,7 @@ func validJSONFieldName(name string) (valid bool) {
 	return true
 }
 
-func structFieldValue(value reflect.Value, index []int) (field reflect.Value, indirect bool) {
+func structFieldValue(value reflect.Value, index []int) (field reflect.Value, throughPointer bool) {
 	field = value
 	for _, i := range index {
 		if field.Kind() == reflect.Pointer {
@@ -134,7 +134,7 @@ func structFieldValue(value reflect.Value, index []int) (field reflect.Value, in
 				return reflect.Value{}, false
 			}
 			field = field.Elem()
-			indirect = true
+			throughPointer = true
 		}
 		field = field.Field(i)
 	}
