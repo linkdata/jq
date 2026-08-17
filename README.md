@@ -68,6 +68,12 @@ func main() {
 
 Struct path components exactly match names selected by `encoding/json`'s default
 field-selection rules, including JSON tag names and unambiguous promoted fields.
+An untagged anonymous struct field contributes its promoted fields directly to
+the containing struct's namespace; it does not add its Go type name as a path
+component. For example, an anonymous `Inner` exposes `value`. Tagging the field
+`json:"inner"` replaces that path with `inner.value`; `json:"Inner"` uses
+`Inner.value`.
+
 Reachable exported fields promoted through unexported embedded structs are
 readable with `Get` and writable with `Set`, including through map-to-struct
 assignments.

@@ -583,10 +583,86 @@ func TestPromotedFieldSelectionDetails(t *testing.T) {
 		requirePathNotFound(t, err)
 	})
 
-	t.Run("anonymous container is not a JSON field", func(t *testing.T) {
-		value := promotedValue{promotedEmbedded{Value: 1}}
-		_, err := jq.Get(&value, "promotedEmbedded.value")
+	t.Run("untagged anonymous namespace", func(t *testing.T) {
+		type Inner struct {
+			Value int `json:"value"`
+		}
+		type Outer struct {
+			Inner
+		}
+		initial := Outer{Inner: Inner{Value: 1}}
+		if got := jsonSnapshot(t, initial); got != `{"value":1}` {
+			t.Fatalf("json.Marshal = %s, want {\"value\":1}", got)
+		}
+		tests := []struct {
+			path    string
+			setting any
+		}{
+			{"Inner", Inner{Value: 2}},
+			{"Inner.value", 2},
+		}
+		for _, tc := range tests {
+			t.Run(tc.path, func(t *testing.T) {
+				value := initial
+				_, err := jq.Get(&value, tc.path)
+				requirePathNotFound(t, err)
+				changed, err := jq.Set(&value, tc.path, tc.setting)
+				if changed || !reflect.DeepEqual(value, initial) {
+					t.Fatalf("Set(%q) = %t, %v; value = %#v; want false, ErrPathNotFound, unchanged", tc.path, changed, err, value)
+				}
+				requirePathNotFound(t, err)
+				checks := 0
+				changed, err = jq.SetChecked(&value, tc.path, tc.setting, func() error {
+					checks++
+					return nil
+				})
+				if changed || checks != 0 || !reflect.DeepEqual(value, initial) {
+					t.Fatalf("SetChecked(%q) = %t, %v; checks = %d, value = %#v; want false, ErrPathNotFound, 0, unchanged", tc.path, changed, err, checks, value)
+				}
+				requirePathNotFound(t, err)
+			})
+		}
+		value := initial
+		changed, err := jq.Set(&value, "", map[string]any{"Inner": Inner{Value: 2}})
+		if err != nil || changed || !reflect.DeepEqual(value, initial) {
+			t.Fatalf("map Set = %t, %v; value = %#v; want false, nil, unchanged", changed, err, value)
+		}
+		got, err := jq.Get(&value, "value")
+		if err != nil || got != 1 {
+			t.Fatalf("Get(value) = %#v, %v; want 1, nil", got, err)
+		}
+		changed, err = jq.Set(&value, "value", 2)
+		if err != nil || !changed || value.Value != 2 {
+			t.Fatalf("Set(value) = %t, %v; Value = %d; want true, nil, 2", changed, err, value.Value)
+		}
+	})
+
+	t.Run("explicit name replaces promoted namespace", func(t *testing.T) {
+		type Inner struct {
+			Value int `json:"value"`
+		}
+		type Outer struct {
+			Inner `json:"Inner"`
+		}
+		value := Outer{Inner: Inner{Value: 1}}
+		if got := jsonSnapshot(t, value); got != `{"Inner":{"value":1}}` {
+			t.Fatalf("json.Marshal = %s, want {\"Inner\":{\"value\":1}}", got)
+		}
+		got, err := jq.Get(&value, "Inner")
+		if err != nil || got != (Inner{Value: 1}) {
+			t.Fatalf("Get(Inner) = %#v, %v; want %#v, nil", got, err, Inner{Value: 1})
+		}
+		_, err = jq.Get(&value, "value")
 		requirePathNotFound(t, err)
+		changed, err := jq.Set(&value, "value", 2)
+		if changed || value.Value != 1 {
+			t.Fatalf("Set(value) = %t, %v; Value = %d; want false, ErrPathNotFound, 1", changed, err, value.Value)
+		}
+		requirePathNotFound(t, err)
+		changed, err = jq.Set(&value, "Inner.value", 2)
+		if err != nil || !changed || value.Value != 2 {
+			t.Fatalf("Set(Inner.value) = %t, %v; Value = %d; want true, nil, 2", changed, err, value.Value)
+		}
 	})
 
 	t.Run("exact case", func(t *testing.T) {
