@@ -152,6 +152,14 @@ type assignment struct {
 	log   *undoLog
 }
 
+// Match encoding/json/v2's delayed cycle tracking for allocation-free shallow paths.
+const startDetectingPointerCyclesAfter = 1000
+
+type pointerVisit struct {
+	typeOf  reflect.Type
+	pointer any // a boxed unsafe.Pointer remains comparable and visible to the GC
+}
+
 func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Value, changed bool, err error) {
 	v = obj
 	if !v.IsValid() {
@@ -179,6 +187,38 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 			changed, err = assign(value, v, setting.log)
 		}
 		return
+	}
+	var pointerDepth int
+	var seenPointers map[pointerVisit]struct{}
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+			return
+		}
+		if v.Kind() == reflect.Pointer {
+			pointerDepth++
+			// Delay the map allocation for ordinary shallow paths. The unchecked
+			// prefix is safe because pointer/interface unwrapping is iterative.
+			if pointerDepth > startDetectingPointerCyclesAfter {
+				visit := pointerVisit{typeOf: v.Type(), pointer: v.UnsafePointer()}
+				if _, ok := seenPointers[visit]; ok {
+					err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+					return
+				}
+				if seenPointers == nil {
+					seenPointers = make(map[pointerVisit]struct{})
+				}
+				seenPointers[visit] = struct{}{}
+			}
+			v = v.Elem()
+			continue
+		}
+		concrete := v.Elem()
+		if set && concrete.Kind() == reflect.Struct && !concrete.CanSet() {
+			err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
+			return
+		}
+		v = concrete
 	}
 	switch v.Kind() {
 	case reflect.Array, reflect.Slice:
@@ -278,23 +318,6 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 				return
 			}
 		}
-	case reflect.Pointer:
-		if v.IsNil() {
-			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-			return
-		}
-		return getSet(v.Elem(), jspath, setting)
-	case reflect.Interface:
-		if v.IsNil() {
-			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-			return
-		}
-		concrete := v.Elem()
-		if set && jspath != "" && concrete.Kind() == reflect.Struct && !concrete.CanSet() {
-			err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
-			return
-		}
-		return getSet(concrete, jspath, setting)
 	case reflect.Struct:
 		if index, ok := cachedStructFields(v.Type())[elem]; ok {
 			if field, _ := structFieldValue(v, index); field.IsValid() {
