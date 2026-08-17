@@ -1,0 +1,829 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>jq: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/linkdata/jq/arrayindex.go (100.0%)</option>
+				
+				<option value="file1">github.com/linkdata/jq/errpathnotfound.go (100.0%)</option>
+				
+				<option value="file2">github.com/linkdata/jq/errtypemismatch.go (100.0%)</option>
+				
+				<option value="file3">github.com/linkdata/jq/jq.go (100.0%)</option>
+				
+				<option value="file4">github.com/linkdata/jq/structfield.go (100.0%)</option>
+				
+				<option value="file5">github.com/linkdata/jq/undolog.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package jq
+
+import "strconv"
+
+const maxArrayIndex int64 = (1 &lt;&lt; 32) - 2
+
+func parseArrayIndex(component string) (index int, ok bool) <span class="cov8" title="1">{
+        if component == "0" </span><span class="cov8" title="1">{
+                ok = true
+                return
+        }</span>
+        <span class="cov8" title="1">if component != "" </span><span class="cov8" title="1">{
+                if component[0] &gt;= '1' &amp;&amp; component[0] &lt;= '9' </span><span class="cov8" title="1">{
+                        var err error
+                        if index, err = strconv.Atoi(component); err == nil </span><span class="cov8" title="1">{
+                                if int64(index) &lt;= maxArrayIndex </span><span class="cov8" title="1">{
+                                        ok = true
+                                        return
+                                }</span>
+                        }
+                }
+        }
+        <span class="cov8" title="1">index = 0
+        return</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package jq
+
+import "fmt"
+
+// ErrPathNotFound is returned when a JSON path cannot be resolved.
+var ErrPathNotFound errPathNotFound
+
+type errPathNotFound struct {
+        index   string
+        objtype string
+}
+
+func (e errPathNotFound) Error() string <span class="cov8" title="1">{
+        return fmt.Sprintf("jq: %q not found in %s", e.index, e.objtype)
+}</span>
+
+func (errPathNotFound) Is(other error) bool <span class="cov8" title="1">{
+        return other == ErrPathNotFound
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package jq
+
+import (
+        "fmt"
+        "reflect"
+)
+
+// ErrTypeMismatch is returned when a value does not have the expected type.
+var ErrTypeMismatch errTypeMismatch
+
+type errTypeMismatch struct {
+        expect reflect.Type
+        actual reflect.Type
+}
+
+func (e errTypeMismatch) Error() string <span class="cov8" title="1">{
+        return fmt.Sprintf("jq: expected %s, not %s", e.expect, e.actual)
+}</span>
+
+func (errTypeMismatch) Is(other error) bool <span class="cov8" title="1">{
+        return other == ErrTypeMismatch
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package jq
+
+import (
+        "errors"
+        "reflect"
+        "strings"
+)
+
+func assignable(from, into reflect.Value) (err error) <span class="cov8" title="1">{
+        if !from.Type().AssignableTo(into.Type()) </span><span class="cov8" title="1">{
+                err = errTypeMismatch{into.Type(), from.Type()}
+        }</span>
+        <span class="cov8" title="1">return</span>
+}
+
+func isNumber(k reflect.Kind) bool <span class="cov8" title="1">{
+        switch k </span>{
+        case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int,
+                reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint,
+                reflect.Float32, reflect.Float64:<span class="cov8" title="1">
+                return true</span>
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error) <span class="cov8" title="1">{
+        tp := into.Type()
+        if from.Type().Key().Kind() != reflect.String </span><span class="cov8" title="1">{
+                return
+        }</span>
+        // A staged struct still shares data through pointers. Use a local log when
+        // the caller has no transaction, so failed staging can restore those values.
+        <span class="cov8" title="1">var local undoLog
+        ownsLog := log == nil
+        if ownsLog </span><span class="cov8" title="1">{
+                log = &amp;local
+        }</span>
+        <span class="cov8" title="1">fields := cachedStructFields(tp)
+        iter := from.MapRange()
+        for iter.Next() </span><span class="cov8" title="1">{
+                name := iter.Key().String()
+                index, ok := fields[name]
+                if !ok </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">value := iter.Value()
+                field, throughPointer := structFieldValue(into, index)
+                if !field.IsValid() || !field.CanSet() </span><span class="cov8" title="1">{
+                        err = errPathNotFound{name, tp.String()}
+                        break</span>
+                }
+                <span class="cov8" title="1">if value.Kind() == reflect.Interface </span><span class="cov8" title="1">{
+                        if value.IsNil() </span><span class="cov8" title="1">{
+                                value = reflect.Zero(field.Type())
+                        }</span> else<span class="cov8" title="1"> {
+                                value = value.Elem()
+                        }</span>
+                }
+                // Unwrapping an interface can expose a pointer.
+                <span class="cov8" title="1">if value.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
+                        if value.IsNil() </span><span class="cov8" title="1">{
+                                value = reflect.Zero(field.Type())
+                        }</span> else<span class="cov8" title="1"> if field.Kind() != reflect.Pointer </span><span class="cov8" title="1">{
+                                value = value.Elem()
+                        }</span>
+                }
+                <span class="cov8" title="1">var candidate reflect.Value
+                var change bool
+                if candidate, change, err = stageValue(value, field, log); err != nil </span><span class="cov8" title="1">{
+                        break</span>
+                }
+                <span class="cov8" title="1">if change </span><span class="cov8" title="1">{
+                        if throughPointer </span><span class="cov8" title="1">{
+                                log.set(field, candidate)
+                        }</span> else<span class="cov8" title="1"> {
+                                field.Set(candidate)
+                        }</span>
+                        <span class="cov8" title="1">changed = true</span>
+                }
+        }
+        <span class="cov8" title="1">if err == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+        <span class="cov8" title="1">changed = false
+        if ownsLog </span><span class="cov8" title="1">{
+                log.rollback()
+        }</span>
+        <span class="cov8" title="1">return</span>
+}
+
+// stageNewElement returns a candidate for a new slice element.
+func stageNewElement(from, into reflect.Value) (candidate reflect.Value, err error) <span class="cov8" title="1">{
+        // Keep this dispatch separate from stageValue. The caller supplies a zero
+        // destination that cannot be observed before append, so change detection is
+        // unnecessary.
+        if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
+                candidate = from
+                return
+        }</span>
+        <span class="cov8" title="1">if from.Kind() == reflect.Map &amp;&amp; into.Kind() == reflect.Struct </span><span class="cov8" title="1">{
+                candidate = cloneValue(into)
+                _, err = assignMap(from, candidate, nil)
+                return
+        }</span>
+        <span class="cov8" title="1">if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
+                if from.Type().ConvertibleTo(into.Type()) </span><span class="cov8" title="1">{
+                        err = nil
+                        candidate = from.Convert(into.Type())
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+// stageValue prepares a replacement for into.
+func stageValue(from, into reflect.Value, log *undoLog) (candidate reflect.Value, changed bool, err error) <span class="cov8" title="1">{
+        // Map candidates are shallow, so assignMap logs writes through shared
+        // pointers until the update succeeds.
+        if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
+                candidate = from
+                changed = !reflect.DeepEqual(into.Interface(), from.Interface())
+                return
+        }</span>
+        <span class="cov8" title="1">if from.Kind() == reflect.Map &amp;&amp; into.Kind() == reflect.Struct </span><span class="cov8" title="1">{
+                candidate = cloneValue(into)
+                changed, err = assignMap(from, candidate, log)
+                return
+        }</span>
+        <span class="cov8" title="1">if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
+                if from.Type().ConvertibleTo(into.Type()) </span><span class="cov8" title="1">{
+                        err = nil
+                        candidate = from.Convert(into.Type())
+                        changed = !into.Equal(candidate)
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+func assign(from, into reflect.Value, log *undoLog) (changed bool, err error) <span class="cov8" title="1">{
+        var candidate reflect.Value
+        if candidate, changed, err = stageValue(from, into, log); err == nil &amp;&amp; changed </span><span class="cov8" title="1">{
+                if log == nil </span><span class="cov8" title="1">{
+                        into.Set(candidate)
+                }</span> else<span class="cov8" title="1"> {
+                        log.set(into, candidate)
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+type assignment struct {
+        value reflect.Value
+        log   *undoLog
+}
+
+func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Value, changed bool, err error) <span class="cov8" title="1">{
+        v = obj
+        if !v.IsValid() </span><span class="cov8" title="1">{
+                err = errors.Join(err, errPathNotFound{jspath, "&lt;nil&gt;"})
+                return
+        }</span>
+        <span class="cov8" title="1">set := setting != nil
+        jspath = strings.TrimLeft(jspath, ".")
+        elem, tail, _ := strings.Cut(jspath, ".")
+        if elem == "" </span><span class="cov8" title="1">{
+                if set </span><span class="cov8" title="1">{
+                        if !v.CanSet() </span><span class="cov8" title="1">{
+                                if (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) &amp;&amp; !v.IsNil() </span><span class="cov8" title="1">{
+                                        v = v.Elem()
+                                }</span>
+                        }
+                        <span class="cov8" title="1">if !v.CanSet() </span><span class="cov8" title="1">{
+                                err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                                return
+                        }</span>
+                        <span class="cov8" title="1">value := setting.value
+                        if !value.IsValid() </span><span class="cov8" title="1">{
+                                value = reflect.Zero(v.Type())
+                        }</span>
+                        <span class="cov8" title="1">changed, err = assign(value, v, setting.log)</span>
+                }
+                <span class="cov8" title="1">return</span>
+        }
+        <span class="cov8" title="1">switch v.Kind() </span>{
+        case reflect.Array, reflect.Slice:<span class="cov8" title="1">
+                if idx, ok := parseArrayIndex(elem); ok </span><span class="cov8" title="1">{
+                        if set &amp;&amp; v.Kind() == reflect.Slice &amp;&amp; idx == v.Len() </span><span class="cov8" title="1">{
+                                if !v.CanSet() </span><span class="cov8" title="1">{
+                                        err = errPathNotFound{jspath, v.Type().String()}
+                                        return
+                                }</span>
+                                // Allow expanding slices by one each time. Prepare the element before
+                                // changing the real slice so an invalid assignment leaves it untouched.
+                                <span class="cov8" title="1">var candidate reflect.Value
+                                if tail == "" </span><span class="cov8" title="1">{
+                                        zero := reflect.Zero(v.Type().Elem())
+                                        value := setting.value
+                                        if !value.IsValid() </span><span class="cov8" title="1">{
+                                                value = zero
+                                        }</span>
+                                        <span class="cov8" title="1">if candidate, err = stageNewElement(value, zero); err != nil </span><span class="cov8" title="1">{
+                                                return
+                                        }</span>
+                                } else<span class="cov8" title="1"> {
+                                        candidate = reflect.New(v.Type().Elem()).Elem()
+                                        candidateSetting := assignment{value: setting.value}
+                                        if _, _, err = getSet(candidate, tail, &amp;candidateSetting); err != nil </span><span class="cov8" title="1">{
+                                                return
+                                        }</span>
+                                }
+                                <span class="cov8" title="1">if setting.log == nil </span><span class="cov8" title="1">{
+                                        if idx &gt;= v.Cap() </span><span class="cov8" title="1">{
+                                                v.Grow(1)
+                                        }</span>
+                                        <span class="cov8" title="1">v.SetLen(idx + 1)
+                                        v.Index(idx).Set(candidate)</span>
+                                } else<span class="cov8" title="1"> {
+                                        setting.log.append(v, candidate)
+                                }</span>
+                                <span class="cov8" title="1">v = v.Index(idx)
+                                changed = true
+                                return</span>
+                        }
+                        <span class="cov8" title="1">if idx &lt; v.Len() </span><span class="cov8" title="1">{
+                                return getSet(v.Index(idx), tail, setting)
+                        }</span>
+                }
+        case reflect.Map:<span class="cov8" title="1">
+                keyType := v.Type().Key()
+                if keyType.Kind() == reflect.String </span><span class="cov8" title="1">{
+                        key := reflect.ValueOf(elem)
+                        if key.Type() != keyType </span><span class="cov8" title="1">{
+                                key = key.Convert(keyType)
+                        }</span>
+                        <span class="cov8" title="1">mapped := v.MapIndex(key)
+                        if mapped.IsValid() </span><span class="cov8" title="1">{
+                                if tail == "" </span><span class="cov8" title="1">{
+                                        if set </span><span class="cov8" title="1">{
+                                                value := setting.value
+                                                if !value.IsValid() </span><span class="cov8" title="1">{
+                                                        value = reflect.Zero(mapped.Type())
+                                                }</span>
+                                                <span class="cov8" title="1">if err = assignable(value, mapped); err == nil </span><span class="cov8" title="1">{
+                                                        var change bool
+                                                        if change = !reflect.DeepEqual(mapped.Interface(), value.Interface()); change </span><span class="cov8" title="1">{
+                                                                if setting.log == nil </span><span class="cov8" title="1">{
+                                                                        v.SetMapIndex(key, value)
+                                                                }</span> else<span class="cov8" title="1"> {
+                                                                        setting.log.setMapIndex(v, key, value)
+                                                                }</span>
+                                                                <span class="cov8" title="1">v = value
+                                                                changed = true</span>
+                                                        } else<span class="cov8" title="1"> {
+                                                                v = mapped
+                                                        }</span>
+                                                }
+                                        } else<span class="cov8" title="1"> {
+                                                v = mapped
+                                        }</span>
+                                        <span class="cov8" title="1">return</span>
+                                }
+                                <span class="cov8" title="1">if !set </span><span class="cov8" title="1">{
+                                        return getSet(mapped, tail, setting)
+                                }</span>
+                                // Map values are not settable, so recurse via a writable copy.
+                                <span class="cov8" title="1">value := reflect.New(mapped.Type()).Elem()
+                                value.Set(mapped)
+                                if _, changed, err = getSet(value, tail, setting); err != nil </span><span class="cov8" title="1">{
+                                        return
+                                }</span>
+                                <span class="cov8" title="1">if changed </span><span class="cov8" title="1">{
+                                        if setting.log == nil </span><span class="cov8" title="1">{
+                                                v.SetMapIndex(key, value)
+                                        }</span> else<span class="cov8" title="1"> {
+                                                setting.log.setMapIndex(v, key, value)
+                                        }</span>
+                                }
+                                <span class="cov8" title="1">v = value
+                                return</span>
+                        }
+                }
+        case reflect.Pointer:<span class="cov8" title="1">
+                if v.IsNil() </span><span class="cov8" title="1">{
+                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                        return
+                }</span>
+                <span class="cov8" title="1">return getSet(v.Elem(), jspath, setting)</span>
+        case reflect.Interface:<span class="cov8" title="1">
+                if v.IsNil() </span><span class="cov8" title="1">{
+                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                        return
+                }</span>
+                <span class="cov8" title="1">concrete := v.Elem()
+                if set &amp;&amp; jspath != "" &amp;&amp; concrete.Kind() == reflect.Struct &amp;&amp; !concrete.CanSet() </span><span class="cov8" title="1">{
+                        err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
+                        return
+                }</span>
+                <span class="cov8" title="1">return getSet(concrete, jspath, setting)</span>
+        case reflect.Struct:<span class="cov8" title="1">
+                if index, ok := cachedStructFields(v.Type())[elem]; ok </span><span class="cov8" title="1">{
+                        if field, _ := structFieldValue(v, index); field.IsValid() </span><span class="cov8" title="1">{
+                                // CanInterface is how Get determines whether it can return a field. A dots-only
+                                // tail also ends here; break reaches the shared error without hiding deeper errors.
+                                if set &amp;&amp; !field.CanInterface() &amp;&amp; strings.Trim(tail, ".") == "" </span><span class="cov8" title="1">{
+                                        break</span>
+                                }
+                                <span class="cov8" title="1">return getSet(field, tail, setting)</span>
+                        }
+                }
+        }
+        <span class="cov8" title="1">err = errPathNotFound{elem, v.Type().String()}
+        return</span>
+}
+
+// GetAs returns the value at jspath in obj as T.
+//
+// It returns [ErrTypeMismatch] when the resolved value is not assignable to T.
+func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" title="1">{
+        var x any
+        if x, err = Get(obj, jspath); err == nil </span><span class="cov8" title="1">{
+                var ok bool
+                if val, ok = x.(T); !ok </span><span class="cov8" title="1">{
+                        err = errTypeMismatch{reflect.TypeOf(val), reflect.TypeOf(x)}
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+// Get returns the value at jspath in obj.
+//
+// An empty path returns obj itself unless obj is nil. Values containing maps,
+// slices, or pointers may share their backing data with obj.
+//
+// Struct components exactly match names selected by encoding/json's default
+// struct-field rules, including JSON tag names and unambiguous promoted fields.
+// An untagged anonymous struct field contributes its promoted fields directly to
+// the containing struct's namespace; it does not add its Go type name as a path
+// component. A valid explicit JSON name on the field replaces that promotion
+// with a component named by the tag.
+//
+// Exported fields promoted through unexported embedded structs are readable with
+// Get and writable with [Set], including through map-to-struct assignments. An
+// exact `json:"-"` tag excludes a field from the path namespace. Get and [Set]
+// can traverse an explicitly named unexported embedded field on paths to
+// reachable exported fields, but a path ending at the embedded field returns an
+// error matching [ErrPathNotFound]. Traversing a nil pointer returns the same
+// error.
+//
+// When traversal reaches an array or slice, a component is a valid index only
+// if it is "0" or begins with an ASCII digit from '1' through '9' followed by
+// zero or more ASCII decimal digits. The index must be at most 4294967294 and
+// representable as int; otherwise the error matches [ErrPathNotFound].
+func Get(obj any, jspath string) (val any, err error) <span class="cov8" title="1">{
+        rv := reflect.ValueOf(obj)
+        if rv, _, err = getSet(rv, jspath, nil); err == nil </span><span class="cov8" title="1">{
+                if rv.CanInterface() </span><span class="cov8" title="1">{
+                        val = rv.Interface()
+                }</span> else<span class="cov8" title="1"> {
+                        err = errPathNotFound{jspath, reflect.TypeOf(obj).String()}
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error) <span class="cov8" title="1">{
+        err = ErrInvalidReceiver
+        rv := reflect.ValueOf(obj)
+        if rv.Kind() == reflect.Pointer &amp;&amp; !rv.IsNil() </span><span class="cov8" title="1">{
+                setting := assignment{value: reflect.ValueOf(val), log: log}
+                _, changed, err = getSet(rv, jspath, &amp;setting)
+        }</span>
+        <span class="cov8" title="1">return</span>
+}
+
+// Set updates jspath in obj and reports whether it performed a write.
+//
+// obj must be a non-nil pointer. An empty path replaces the pointed-to value.
+// Array and slice components follow the index syntax documented by [Get]. A
+// path into a settable slice may append one element by using an index equal to
+// the slice's current length. Map paths address existing string-keyed entries
+// and do not create new entries. A nil val stores the destination type's zero
+// value.
+//
+// Struct components and string keys in map-to-struct assignments follow [Get]'s
+// field-selection rules. Set can traverse an explicitly named unexported
+// embedded field to update a reachable exported field. A path ending at the
+// embedded field, or a map-to-struct key selecting it, returns an error matching
+// [ErrPathNotFound]. Set does not allocate nil pointers; a path traversing one
+// returns the same error.
+//
+// Set leaves obj unchanged when it returns an error. It does not synchronize
+// access to obj; callers must prevent concurrent reads and writes.
+func Set(obj any, jspath string, val any) (changed bool, err error) <span class="cov8" title="1">{
+        return set(obj, jspath, val, nil)
+}</span>
+
+// SetChecked updates jspath only when check accepts the tentative result.
+//
+// It performs the same update as [Set], including updates to reachable exported
+// fields through explicitly named unexported embedded fields. If the update
+// reports a change, SetChecked calls check exactly once while obj contains the
+// tentative result. A nil error commits the update. If check returns an error,
+// SetChecked restores obj, returns false, and returns the error unchanged. If
+// check panics, SetChecked restores obj before the panic continues. A nil check
+// behaves like [Set].
+//
+// check is not called if the update is invalid or reports no change. When check
+// uses [Get] to inspect obj, a path ending at an explicitly named unexported
+// embedded field returns an error matching [ErrPathNotFound], even after a
+// tentative update beneath it; longer paths to reachable exported fields remain
+// readable.
+//
+// check must not mutate obj or values reachable from it, call [Set] or SetChecked
+// on them, or retain references into a rejected value. Rollback restores only
+// changes made by SetChecked.
+//
+// SetChecked does not synchronize access to obj. Callers must prevent concurrent
+// access for the entire call, including while check runs.
+func SetChecked(obj any, jspath string, val any, check func() error) (changed bool, err error) <span class="cov8" title="1">{
+        if check == nil </span><span class="cov8" title="1">{
+                return Set(obj, jspath, val)
+        }</span>
+
+        <span class="cov8" title="1">var log undoLog
+        defer log.rollback()
+        if changed, err = set(obj, jspath, val, &amp;log); err == nil &amp;&amp; changed </span><span class="cov8" title="1">{
+                if err = check(); err == nil </span><span class="cov8" title="1">{
+                        log.commit()
+                        return
+                }</span>
+        }
+        <span class="cov8" title="1">changed = false
+        return</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package jq
+
+import (
+        "reflect"
+        "slices"
+        "strings"
+        "sync"
+        "unicode"
+)
+
+var structFieldsCache sync.Map
+
+// cachedStructFields returns a shared map of JSON names to field paths.
+// Callers must not modify the map or paths.
+func cachedStructFields(tp reflect.Type) (fields map[string][]int) <span class="cov8" title="1">{
+        if cached, ok := structFieldsCache.Load(tp); ok </span><span class="cov8" title="1">{
+                return cached.(map[string][]int)
+        }</span>
+        <span class="cov8" title="1">fields = resolveStructFields(tp)
+        actual, _ := structFieldsCache.LoadOrStore(tp, fields)
+        return actual.(map[string][]int)</span>
+}
+
+// resolveStructFields applies encoding/json v1's embedding and dominance rules.
+func resolveStructFields(tp reflect.Type) (resolved map[string][]int) <span class="cov8" title="1">{
+        type queueEntry struct {
+                typ           reflect.Type
+                index         []int
+                visitChildren bool
+        }
+        type selection struct {
+                index     []int
+                tagged    bool
+                ambiguous bool
+        }
+
+        queue := []queueEntry{{typ: tp, visitChildren: true}}
+        seen := map[reflect.Type]bool{tp: true}
+        selected := make(map[string]selection)
+
+        // Queue entries stay in breadth-first order, so the first field of a name is
+        // shallowest. Scan repeated types for conflicts, but descend only once.
+        for i := 0; i &lt; len(queue); i++ </span><span class="cov8" title="1">{
+                parent := queue[i]
+                for j := 0; j &lt; parent.typ.NumField(); j++ </span><span class="cov8" title="1">{
+                        field := parent.typ.Field(j)
+                        fieldType := field.Type
+                        if field.Anonymous </span><span class="cov8" title="1">{
+                                underlying := fieldType
+                                if underlying.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
+                                        underlying = underlying.Elem()
+                                }</span>
+                                <span class="cov8" title="1">if !field.IsExported() &amp;&amp; underlying.Kind() != reflect.Struct </span><span class="cov8" title="1">{
+                                        continue</span>
+                                }
+                        } else<span class="cov8" title="1"> if !field.IsExported() </span><span class="cov8" title="1">{
+                                continue</span>
+                        }
+                        <span class="cov8" title="1">if fieldType.Name() == "" &amp;&amp; fieldType.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
+                                fieldType = fieldType.Elem()
+                        }</span>
+
+                        <span class="cov8" title="1">name, tagged, ignored := jsonFieldName(field)
+                        if ignored </span><span class="cov8" title="1">{
+                                continue</span>
+                        }
+                        <span class="cov8" title="1">index := append(slices.Clone(parent.index), j)
+                        if tagged || !field.Anonymous || fieldType.Kind() != reflect.Struct </span><span class="cov8" title="1">{
+                                current, ok := selected[name]
+                                switch </span>{
+                                case !ok:<span class="cov8" title="1">
+                                        selected[name] = selection{index: index, tagged: tagged}</span>
+                                case len(index) &gt; len(current.index):<span class="cov8" title="1"></span>
+                                        // The shallower field wins even when it is ambiguous.
+                                case tagged &amp;&amp; !current.tagged:<span class="cov8" title="1">
+                                        selected[name] = selection{index: index, tagged: true}</span>
+                                case tagged == current.tagged:<span class="cov8" title="1">
+                                        current.ambiguous = true
+                                        selected[name] = current</span>
+                                default:<span class="cov8" title="1"></span>
+                                        // The existing tagged field wins at this depth.
+                                }
+                                <span class="cov8" title="1">continue</span>
+                        }
+                        <span class="cov8" title="1">if parent.visitChildren </span><span class="cov8" title="1">{
+                                queue = append(queue, queueEntry{typ: fieldType, index: index, visitChildren: !seen[fieldType]})
+                                seen[fieldType] = true
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">resolved = make(map[string][]int, len(selected))
+        for name, field := range selected </span><span class="cov8" title="1">{
+                if !field.ambiguous </span><span class="cov8" title="1">{
+                        resolved[name] = field.index
+                }</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+
+func jsonFieldName(field reflect.StructField) (name string, tagged, ignored bool) <span class="cov8" title="1">{
+        tag := field.Tag.Get("json")
+        if ignored = tag == "-"; ignored </span><span class="cov8" title="1">{
+                return
+        }</span>
+        <span class="cov8" title="1">name, _, _ = strings.Cut(tag, ",")
+        if !validJSONFieldName(name) </span><span class="cov8" title="1">{
+                name = ""
+        }</span>
+        <span class="cov8" title="1">tagged = name != ""
+        if !tagged </span><span class="cov8" title="1">{
+                name = field.Name
+        }</span>
+        <span class="cov8" title="1">return</span>
+}
+
+func validJSONFieldName(name string) (valid bool) <span class="cov8" title="1">{
+        if name == "" </span><span class="cov8" title="1">{
+                return
+        }</span>
+        <span class="cov8" title="1">for _, r := range name </span><span class="cov8" title="1">{
+                if strings.ContainsRune("!#$%&amp;()*+-./:;&lt;=&gt;?@[]^_{|}~ ", r) </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">if !unicode.IsLetter(r) &amp;&amp; !unicode.IsDigit(r) </span><span class="cov8" title="1">{
+                        return
+                }</span>
+        }
+        <span class="cov8" title="1">return true</span>
+}
+
+// structFieldValue follows index without initializing nil pointers and reports
+// whether it dereferenced one. A nil pointer returns an invalid field.
+func structFieldValue(value reflect.Value, index []int) (field reflect.Value, throughPointer bool) <span class="cov8" title="1">{
+        field = value
+        for _, i := range index </span><span class="cov8" title="1">{
+                if field.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
+                        if field.IsNil() </span><span class="cov8" title="1">{
+                                return reflect.Value{}, false
+                        }</span>
+                        <span class="cov8" title="1">field = field.Elem()
+                        throughPointer = true</span>
+                }
+                <span class="cov8" title="1">field = field.Field(i)</span>
+        }
+        <span class="cov8" title="1">return</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package jq
+
+import "reflect"
+
+type undoLog struct {
+        undos []func()
+}
+
+func cloneValue(value reflect.Value) (clone reflect.Value) <span class="cov8" title="1">{
+        clone = reflect.New(value.Type()).Elem()
+        clone.Set(value)
+        return
+}</span>
+
+func (log *undoLog) add(undo func()) <span class="cov8" title="1">{
+        log.undos = append(log.undos, undo)
+}</span>
+
+func (log *undoLog) set(dst, src reflect.Value) <span class="cov8" title="1">{
+        old := cloneValue(dst)
+        log.add(func() </span><span class="cov8" title="1">{
+                dst.Set(old)
+        }</span>)
+        <span class="cov8" title="1">dst.Set(src)</span>
+}
+
+func (log *undoLog) setMapIndex(value, key, elem reflect.Value) <span class="cov8" title="1">{
+        old := value.MapIndex(key)
+        log.add(func() </span><span class="cov8" title="1">{
+                value.SetMapIndex(key, old)
+        }</span>)
+        <span class="cov8" title="1">value.SetMapIndex(key, elem)</span>
+}
+
+func (log *undoLog) append(value, elem reflect.Value) <span class="cov8" title="1">{
+        old := cloneValue(value)
+        var oldTail, tail reflect.Value
+        if value.Len() &lt; value.Cap() </span><span class="cov8" title="1">{
+                tail = value.Slice(0, value.Len()+1).Index(value.Len())
+                oldTail = cloneValue(tail)
+        }</span>
+        <span class="cov8" title="1">log.add(func() </span><span class="cov8" title="1">{
+                if tail.IsValid() </span><span class="cov8" title="1">{
+                        tail.Set(oldTail)
+                }</span>
+                <span class="cov8" title="1">value.Set(old)</span>
+        })
+        <span class="cov8" title="1">value.Set(reflect.Append(value, elem))</span>
+}
+
+func (log *undoLog) commit() <span class="cov8" title="1">{
+        log.undos = nil
+}</span>
+
+func (log *undoLog) rollback() <span class="cov8" title="1">{
+        for i := len(log.undos) - 1; i &gt;= 0; i-- </span><span class="cov8" title="1">{
+                log.undos[i]()
+        }</span>
+        <span class="cov8" title="1">log.undos = nil</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
