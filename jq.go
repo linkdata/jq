@@ -329,12 +329,12 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 //
 // Struct components exactly match names selected by encoding/json's default
 // struct-field rules, including JSON tag names and unambiguous promoted fields.
-// Promotion reaches exported fields of unexported embedded structs; those fields
-// are readable with Get and writable with [Set], including map-to-struct
-// assignments. A `json:"-"` tag excludes a field from the path namespace. An
+// Exported fields promoted through unexported embedded structs are readable with
+// Get and writable with [Set], including through map-to-struct assignments. An
+// exact `json:"-"` tag excludes a field from the path namespace. An
 // unexported embedded field with an explicit JSON name cannot itself be returned,
-// although its exported fields remain accessible through longer paths. Traversing
-// a nil pointer returns an error matching [ErrPathNotFound].
+// but its exported fields can be accessed through longer paths when reachable.
+// Traversing a nil pointer returns an error matching [ErrPathNotFound].
 //
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
