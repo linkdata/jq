@@ -31,7 +31,8 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 	// A staged struct still shares data through pointers. Use a local log when
 	// the caller has no transaction, so failed staging can restore those values.
 	var local undoLog
-	if log == nil {
+	ownsLog := log == nil
+	if ownsLog {
 		log = &local
 	}
 	fields := cachedStructFields(tp)
@@ -48,14 +49,14 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 			err = errPathNotFound{name, tp.String()}
 			break
 		}
-		switch value.Kind() {
-		case reflect.Interface:
+		if value.Kind() == reflect.Interface {
 			if value.IsNil() {
 				value = reflect.Zero(field.Type())
 			} else {
 				value = value.Elem()
 			}
-		case reflect.Pointer:
+		}
+		if value.Kind() == reflect.Pointer {
 			if value.IsNil() {
 				value = reflect.Zero(field.Type())
 			} else if field.Kind() != reflect.Pointer {
@@ -80,18 +81,17 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 		return
 	}
 	changed = false
-	local.rollback()
+	if ownsLog {
+		log.rollback()
+	}
 	return
 }
 
-// prepareAssignment returns a candidate for a new slice element.
-//
-// Its caller supplies a zero destination, so preparing the candidate cannot
-// mutate data reachable from the existing slice.
-//
-// It intentionally mirrors the dispatch in [stageValue]: a new zero element
-// cannot be observed before it is appended and does not need change detection.
-func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err error) {
+// stageNewElement returns a candidate for a new slice element.
+func stageNewElement(from, into reflect.Value) (candidate reflect.Value, err error) {
+	// Keep this dispatch separate from stageValue. The caller supplies a zero
+	// destination that cannot be observed before append, so change detection is
+	// unnecessary.
 	if err = assignable(from, into); err == nil {
 		candidate = from
 		return
@@ -197,7 +197,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 					if !value.IsValid() {
 						value = zero
 					}
-					if candidate, err = prepareAssignment(value, zero); err != nil {
+					if candidate, err = stageNewElement(value, zero); err != nil {
 						return
 					}
 				} else {
@@ -331,6 +331,10 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 // a nil pointer, including a nil anonymous pointer, returns an error matching
 // [ErrPathNotFound].
 //
+// Selecting an explicitly named unexported embedded field directly returns an
+// error matching [ErrPathNotFound]. Exported fields below it remain accessible
+// through a longer path.
+//
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
 // zero or more ASCII decimal digits. The index must be at most 4294967294 and
@@ -338,10 +342,10 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 func Get(obj any, jspath string) (val any, err error) {
 	rv := reflect.ValueOf(obj)
 	if rv, _, err = getSet(rv, jspath, nil); err == nil {
-		err = ErrPathNotFound
 		if rv.CanInterface() {
 			val = rv.Interface()
-			err = nil
+		} else {
+			err = errPathNotFound{jspath, rv.Type().String()}
 		}
 	}
 	return
@@ -369,7 +373,8 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // Struct components follow the field-selection rules documented by [Get]. Map
 // values assigned to structs match string keys by the same rules. Set does not
 // allocate nil pointers encountered during traversal, including nil anonymous
-// pointers; such paths return an error matching [ErrPathNotFound].
+// pointers; such paths return an error matching [ErrPathNotFound]. A map key
+// that resolves through a nil anonymous pointer returns the same error.
 //
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.

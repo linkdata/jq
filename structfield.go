@@ -10,6 +10,8 @@ import (
 
 var structFieldsCache sync.Map
 
+// cachedStructFields returns a shared map of JSON names to field paths.
+// Callers must not modify the map or paths.
 func cachedStructFields(tp reflect.Type) (fields map[string][]int) {
 	if cached, ok := structFieldsCache.Load(tp); ok {
 		return cached.(map[string][]int)
@@ -19,6 +21,7 @@ func cachedStructFields(tp reflect.Type) (fields map[string][]int) {
 	return actual.(map[string][]int)
 }
 
+// resolveStructFields applies encoding/json v1's embedding and dominance rules.
 func resolveStructFields(tp reflect.Type) (resolved map[string][]int) {
 	type queueEntry struct {
 		typ           reflect.Type
@@ -81,8 +84,8 @@ func resolveStructFields(tp reflect.Type) (resolved map[string][]int) {
 			}
 			if parent.visitChildren {
 				queue = append(queue, queueEntry{typ: fieldType, index: index, visitChildren: !seen[fieldType]})
+				seen[fieldType] = true
 			}
-			seen[fieldType] = true
 		}
 	}
 
@@ -126,6 +129,8 @@ func validJSONFieldName(name string) (valid bool) {
 	return true
 }
 
+// structFieldValue follows index without allocating pointers and reports whether
+// it dereferenced one. A nil pointer returns an invalid field.
 func structFieldValue(value reflect.Value, index []int) (field reflect.Value, throughPointer bool) {
 	field = value
 	for _, i := range index {

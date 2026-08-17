@@ -192,21 +192,23 @@ func TestSetMapToStructFailureIsAtomic(t *testing.T) {
 		{Name: "Number", Type: reflect.TypeFor[int](), Tag: `json:"number"`},
 		{Name: "Text", Type: reflect.TypeFor[string](), Tag: `json:"text"`},
 	})
-	value := reflect.New(typeOf)
-	value.Elem().FieldByName("Number").SetInt(1)
-	value.Elem().FieldByName("Text").SetString("original")
+	for range 200 {
+		value := reflect.New(typeOf)
+		value.Elem().FieldByName("Number").SetInt(1)
+		value.Elem().FieldByName("Text").SetString("original")
 
-	changed, err := jq.Set(value.Interface(), "", map[string]any{"number": 2, "text": 2})
-	if changed {
-		t.Fatal("Set reported a change on error")
-	}
-	if !errors.Is(err, jq.ErrTypeMismatch) {
-		t.Fatalf("Set error = %v, want ErrTypeMismatch", err)
-	}
-	if number := value.Elem().FieldByName("Number").Int(); number != 1 {
-		t.Fatalf("Number = %d, want 1", number)
-	}
-	if text := value.Elem().FieldByName("Text").String(); text != "original" {
-		t.Fatalf("Text = %q, want original", text)
+		changed, err := jq.Set(value.Interface(), "", map[string]any{"number": 2, "text": 2})
+		if changed {
+			t.Fatal("Set reported a change on error")
+		}
+		if !errors.Is(err, jq.ErrTypeMismatch) {
+			t.Fatalf("Set error = %v, want ErrTypeMismatch", err)
+		}
+		if number := value.Elem().FieldByName("Number").Int(); number != 1 {
+			t.Fatalf("Number = %d, want 1", number)
+		}
+		if text := value.Elem().FieldByName("Text").String(); text != "original" {
+			t.Fatalf("Text = %q, want original", text)
+		}
 	}
 }

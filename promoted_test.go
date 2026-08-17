@@ -202,21 +202,23 @@ func TestPromotedFieldSetChecked(t *testing.T) {
 			*embedded
 		}
 
-		inner := &embedded{Number: 1, Text: "original"}
-		value := outer{embedded: inner}
-		checked := false
-		changed, err := jq.SetChecked(&value, "", map[string]any{"number": 2, "text": 3}, func() error {
-			checked = true
-			return nil
-		})
-		if checked {
-			t.Fatal("checker called after an assignment error")
-		}
-		if changed || !errors.Is(err, jq.ErrTypeMismatch) {
-			t.Fatalf("SetChecked = %t, %v; want false, ErrTypeMismatch", changed, err)
-		}
-		if value.embedded != inner || inner.Number != 1 || inner.Text != "original" {
-			t.Fatalf("value = %#v, pointee = %#v; want original pointer and value", value, inner)
+		for range 200 {
+			inner := &embedded{Number: 1, Text: "original"}
+			value := outer{embedded: inner}
+			checked := false
+			changed, err := jq.SetChecked(&value, "", map[string]any{"number": 2, "text": 3}, func() error {
+				checked = true
+				return nil
+			})
+			if checked {
+				t.Fatal("checker called after an assignment error")
+			}
+			if changed || !errors.Is(err, jq.ErrTypeMismatch) {
+				t.Fatalf("SetChecked = %t, %v; want false, ErrTypeMismatch", changed, err)
+			}
+			if value.embedded != inner || inner.Number != 1 || inner.Text != "original" {
+				t.Fatalf("value = %#v, pointee = %#v; want original pointer and value", value, inner)
+			}
 		}
 	})
 }
@@ -232,14 +234,16 @@ func TestPromotedFieldMapAssignmentFailureIsAtomic(t *testing.T) {
 			*embedded
 		}
 
-		inner := &embedded{Number: 1, Text: "original"}
-		value := outer{embedded: inner}
-		changed, err := jq.Set(&value, "", map[string]any{"number": 2, "text": 3})
-		if changed || !errors.Is(err, jq.ErrTypeMismatch) {
-			t.Fatalf("Set = %t, %v; want false, ErrTypeMismatch", changed, err)
-		}
-		if value.embedded != inner || inner.Number != 1 || inner.Text != "original" {
-			t.Fatalf("value = %#v, pointee = %#v; want original pointer and value", value, inner)
+		for range 200 {
+			inner := &embedded{Number: 1, Text: "original"}
+			value := outer{embedded: inner}
+			changed, err := jq.Set(&value, "", map[string]any{"number": 2, "text": 3})
+			if changed || !errors.Is(err, jq.ErrTypeMismatch) {
+				t.Fatalf("Set = %t, %v; want false, ErrTypeMismatch", changed, err)
+			}
+			if value.embedded != inner || inner.Number != 1 || inner.Text != "original" {
+				t.Fatalf("value = %#v, pointee = %#v; want original pointer and value", value, inner)
+			}
 		}
 	})
 
@@ -252,18 +256,20 @@ func TestPromotedFieldMapAssignmentFailureIsAtomic(t *testing.T) {
 			Text  string `json:"text"`
 		}
 
-		inner := &embedded{Number: 1}
-		value := outer{Child: child{embedded: inner}, Text: "original"}
-		input := map[string]any{
-			"child": map[string]any{"number": 2},
-			"text":  3,
-		}
-		changed, err := jq.Set(&value, "", input)
-		if changed || !errors.Is(err, jq.ErrTypeMismatch) {
-			t.Fatalf("Set = %t, %v; want false, ErrTypeMismatch", changed, err)
-		}
-		if value.Child.embedded != inner || inner.Number != 1 || value.Text != "original" {
-			t.Fatalf("value = %#v, pointee = %#v; want original pointers and values", value, inner)
+		for range 200 {
+			inner := &embedded{Number: 1}
+			value := outer{Child: child{embedded: inner}, Text: "original"}
+			input := map[string]any{
+				"child": map[string]any{"number": 2},
+				"text":  3,
+			}
+			changed, err := jq.Set(&value, "", input)
+			if changed || !errors.Is(err, jq.ErrTypeMismatch) {
+				t.Fatalf("Set = %t, %v; want false, ErrTypeMismatch", changed, err)
+			}
+			if value.Child.embedded != inner || inner.Number != 1 || value.Text != "original" {
+				t.Fatalf("value = %#v, pointee = %#v; want original pointers and values", value, inner)
+			}
 		}
 	})
 }
@@ -395,6 +401,13 @@ func TestPromotedFieldSelectionDetails(t *testing.T) {
 		value := outer{promotedEmbedded{Value: 7}}
 		if got := jsonSnapshot(t, value); got != `{"inner":{"value":7}}` {
 			t.Fatalf("json.Marshal = %s", got)
+		}
+		_, err := jq.Get(&value, "inner")
+		if !errors.Is(err, jq.ErrPathNotFound) {
+			t.Fatalf("Get(inner) error = %v, want ErrPathNotFound", err)
+		}
+		if got, want := err.Error(), `jq: "inner" not found in jq_test.promotedEmbedded`; got != want {
+			t.Fatalf("Get(inner) error = %q, want %q", got, want)
 		}
 		got, err := jq.Get(&value, "inner.value")
 		if err != nil || got != 7 {
