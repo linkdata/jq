@@ -487,6 +487,11 @@ func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" 
 //
 // Struct components exactly match names selected by encoding/json's default
 // struct-field rules, including JSON tag names and unambiguous promoted fields.
+// An untagged anonymous struct field contributes its promoted fields directly to
+// the containing struct's namespace; it does not add its Go type name as a path
+// component. A valid explicit JSON name on the field replaces that promotion
+// with a component named by the tag.
+//
 // Exported fields promoted through unexported embedded structs are readable with
 // Get and writable with [Set], including through map-to-struct assignments. An
 // exact `json:"-"` tag excludes a field from the path namespace. Get and [Set]
