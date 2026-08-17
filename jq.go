@@ -416,7 +416,7 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 
 // Set updates jspath in obj and reports whether it performed a write.
 //
-// obj must be a non-nil pointer. An empty path replaces the pointed-to value.
+// obj must be a non-nil pointer. An empty path targets the pointed-to value.
 // Array and slice components follow the index syntax documented by [Get]. A
 // path into a settable slice may append one element by using an index equal to
 // the slice's current length. Map paths address existing string-keyed entries
@@ -430,6 +430,13 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // [ErrPathNotFound]. Set does not allocate nil pointers. Traversing a nil pointer
 // or an unresolved pointer/interface cycle returns the same error.
 //
+// For an existing destination value, Set skips an assignable replacement when
+// [reflect.DeepEqual] reports that the current and replacement values are equal.
+// This is Go deep equality, not equality of serialized JSON; Set does not marshal
+// values to make this decision. Set can therefore report no write and retain an
+// existing pointer, map, or slice, including its aliasing, when a distinct
+// replacement is deeply equal.
+//
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.
 func Set(obj any, jspath string, val any) (changed bool, err error) {
@@ -440,17 +447,17 @@ func Set(obj any, jspath string, val any) (changed bool, err error) {
 //
 // It performs the same update as [Set], including updates to reachable exported
 // fields through explicitly named unexported embedded fields. If the update
-// reports a change, SetChecked calls check exactly once while obj contains the
+// reports a write, SetChecked calls check exactly once while obj contains the
 // tentative result. A nil error commits the update. If check returns an error,
 // SetChecked restores obj, returns false, and returns the error unchanged. If
 // check panics, SetChecked restores obj before the panic continues. A nil check
 // behaves like [Set].
 //
-// check is not called if the update is invalid or reports no change. When check
-// uses [Get] to inspect obj, a path ending at an explicitly named unexported
-// embedded field returns an error matching [ErrPathNotFound], even after a
-// tentative update beneath it; longer paths to reachable exported fields remain
-// readable.
+// check is not called if the update is invalid or reports no write, including
+// when [Set] skips a deeply equal assignable replacement. When check uses [Get]
+// to inspect obj, a path ending at an explicitly named unexported embedded field
+// returns an error matching [ErrPathNotFound], even after a tentative update
+// beneath it; longer paths to reachable exported fields remain readable.
 //
 // check must not mutate obj or values reachable from it, call [Set] or SetChecked
 // on them, or retain references into a rejected value. Rollback restores only
