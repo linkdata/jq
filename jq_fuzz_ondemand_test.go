@@ -16,7 +16,21 @@ type onDemandSub struct {
 	F float64
 }
 
+type onDemandPromoted struct {
+	Promoted int `json:"promoted"`
+}
+
+type onDemandPromotedMiddle struct {
+	onDemandPromoted
+}
+
+type onDemandPromotedPointer struct {
+	PromotedPointer int `json:"promotedPointer"`
+}
+
 type onDemandRoot struct {
+	onDemandPromotedMiddle
+	*onDemandPromotedPointer
 	Str     string         `json:"str"`
 	Num     int            `json:"num"`
 	U8      uint8          `json:"u8"`
@@ -63,7 +77,7 @@ func onDemandValue(raw []byte, kind uint8) any {
 	}
 	s := string(raw)
 	sub := onDemandSub{S: s, I: n, F: float64(n) + 0.5}
-	switch kind % 18 {
+	switch kind % 21 {
 	case 0:
 		return nil
 	case 1:
@@ -98,21 +112,33 @@ func onDemandValue(raw []byte, kind uint8) any {
 		return map[string]any{"slice": []int{n, n + 1}}
 	case 16:
 		return map[string]*onDemandSub{"pSub": nil}
-	default:
+	case 17:
 		return []byte(raw)
+	case 18:
+		next := n + 1
+		return map[string]any{"promoted": &n, "promotedPointer": &next, "str": &s}
+	case 19:
+		var nilInt *int
+		return map[string]any{"promoted": nilInt}
+	default:
+		return map[string]any{"promotedPointer": &n, "str": n}
 	}
 }
 
 func newOnDemandRoot(mode uint8) onDemandRoot {
 	r := onDemandRoot{
-		Str:    "root",
-		Num:    7,
-		U8:     5,
-		F64:    4.2,
-		Bool:   true,
-		Arr:    [2]int{11, 22},
-		Slice:  []int{1, 2},
-		SliceS: []string{"a", "b"},
+		onDemandPromotedMiddle: onDemandPromotedMiddle{
+			onDemandPromoted: onDemandPromoted{Promoted: 41},
+		},
+		onDemandPromotedPointer: &onDemandPromotedPointer{PromotedPointer: 42},
+		Str:                     "root",
+		Num:                     7,
+		U8:                      5,
+		F64:                     4.2,
+		Bool:                    true,
+		Arr:                     [2]int{11, 22},
+		Slice:                   []int{1, 2},
+		SliceS:                  []string{"a", "b"},
 		MapInt: map[string]int{
 			"a": 1,
 			"b": 2,
@@ -143,12 +169,17 @@ func newOnDemandRoot(mode uint8) onDemandRoot {
 	if mode&0x20 != 0 {
 		r.PSub = nil
 	}
+	if mode&0x40 != 0 {
+		r.onDemandPromotedPointer = nil
+	}
 	return r
 }
 
 func onDemandPaths() []string {
 	base := []string{
 		"",
+		"promoted", "Promoted", "onDemandPromotedMiddle.promoted",
+		"promotedPointer", "PromotedPointer", "onDemandPromotedPointer.promotedPointer",
 		"str", "num", "u8", "f64", "bool",
 		"arr", "arr.0", "arr.1", "arr.2", "arr.-1", "arr.x",
 		"slice", "slice.0", "slice.1", "slice.2", "slice.-1", "slice.x",
@@ -184,11 +215,95 @@ func onDemandPaths() []string {
 }
 
 func onDemandValueKinds() []uint8 {
-	kinds := make([]uint8, 18)
+	kinds := make([]uint8, 21)
 	for i := range kinds {
 		kinds[i] = uint8(i)
 	}
 	return kinds
+}
+
+func assertOnDemandPromotedContracts(t *testing.T, raw []byte) {
+	t.Helper()
+	root := newOnDemandRoot(0)
+	pointer := root.onDemandPromotedPointer
+	n := onDemandBytesToInt(raw)
+	direct := n
+	if direct == root.Promoted {
+		direct++
+	}
+	throughPointer := n
+	if throughPointer == root.PromotedPointer {
+		throughPointer++
+	}
+
+	for _, want := range []struct {
+		path  string
+		value int
+	}{
+		{"promoted", 41},
+		{"promotedPointer", 42},
+	} {
+		got, err := jq.Get(&root, want.path)
+		if err != nil || got != want.value {
+			t.Fatalf("Get promoted path=%q = (%#v, %v), want (%d, nil)", want.path, got, err, want.value)
+		}
+	}
+	changed, err := jq.Set(&root, "promoted", direct)
+	if err != nil || !changed || root.Promoted != direct {
+		t.Fatalf("Set promoted value = (%t, %v, %d), want (true, nil, %d)", changed, err, root.Promoted, direct)
+	}
+	changed, err = jq.Set(&root, "promotedPointer", throughPointer)
+	if err != nil || !changed || root.PromotedPointer != throughPointer || root.onDemandPromotedPointer != pointer {
+		t.Fatalf("Set promoted pointer = (%t, %v, %#v)", changed, err, root)
+	}
+
+	root = newOnDemandRoot(0)
+	var nilInt *int
+	changed, err = jq.Set(&root, "", map[string]any{"promoted": nilInt})
+	if err != nil || !changed || root.Promoted != 0 {
+		t.Fatalf("Set typed nil pointer = (%t, %v, %d), want (true, nil, 0)", changed, err, root.Promoted)
+	}
+
+	root = newOnDemandRoot(0)
+	before := newOnDemandRoot(0)
+	pointer = root.onDemandPromotedPointer
+	calls := 0
+	sawTentative := false
+
+	changed, err = jq.SetChecked(&root, "", map[string]any{
+		"promoted":        &direct,
+		"promotedPointer": &throughPointer,
+	}, func() error {
+		calls++
+		sawTentative = root.Promoted == direct &&
+			root.PromotedPointer == throughPointer &&
+			root.onDemandPromotedPointer == pointer
+		return errFuzzCheckRejected
+	})
+	if changed || err != errFuzzCheckRejected || calls != 1 || !sawTentative {
+		t.Fatalf("SetChecked promoted rejection = (%t, %v, %d calls, tentative=%t)", changed, err, calls, sawTentative)
+	}
+	if root.onDemandPromotedPointer != pointer || !reflect.DeepEqual(root, before) {
+		t.Fatalf("SetChecked promoted rejection changed state: got %#v want %#v", root, before)
+	}
+
+	for _, update := range []struct {
+		path  string
+		value any
+	}{
+		{"promotedPointer", throughPointer},
+		{"", map[string]any{"promotedPointer": &throughPointer}},
+	} {
+		root = newOnDemandRoot(0x40)
+		changed, err = jq.Set(&root, update.path, update.value)
+		if changed || !errors.Is(err, jq.ErrPathNotFound) || root.onDemandPromotedPointer != nil {
+			t.Fatalf("Set through nil promoted pointer path=%q = (%t, %v, %#v)", update.path, changed, err, root)
+		}
+	}
+	root = newOnDemandRoot(0x40)
+	if _, err = jq.Get(&root, "promotedPointer"); !errors.Is(err, jq.ErrPathNotFound) {
+		t.Fatalf("Get through nil promoted pointer error = %v, want ErrPathNotFound", err)
+	}
 }
 
 func assertOnDemandSetGetCase(t *testing.T, path string, raw []byte, ifaceMode, valueKind uint8) {
@@ -196,6 +311,7 @@ func assertOnDemandSetGetCase(t *testing.T, path string, raw []byte, ifaceMode, 
 	path = onDemandClamp(path, 256)
 	root := newOnDemandRoot(ifaceMode)
 	before := newOnDemandRoot(ifaceMode)
+	promotedPointer := root.onDemandPromotedPointer
 	value := onDemandValue(raw, valueKind)
 
 	changed1, err1 := jq.Set(&root, path, value)
@@ -208,6 +324,9 @@ func assertOnDemandSetGetCase(t *testing.T, path string, raw []byte, ifaceMode, 
 		}
 		if !reflect.DeepEqual(root, before) {
 			t.Fatalf("Set mutated state on error path=%q valueKind=%d got=%#v want=%#v", path, valueKind, root, before)
+		}
+		if root.onDemandPromotedPointer != promotedPointer {
+			t.Fatalf("Set replaced promoted pointer on error path=%q valueKind=%d", path, valueKind)
 		}
 		return
 	}
@@ -320,6 +439,7 @@ func FuzzOnDemand_ComprehensivePathTypeMatrix(f *testing.F) {
 		{[]byte("iface"), 3, "any.0", 2},
 		{[]byte("nil"), 4, "anyNil.S", 6},
 		{[]byte("dots"), 0x20, "...", 1},
+		{[]byte("nil promoted"), 0x40, "promotedPointer", 2},
 	}
 	for _, seed := range seeds {
 		f.Add(seed.raw, seed.ifaceMode, seed.path, seed.valueKind)
@@ -343,5 +463,6 @@ func FuzzOnDemand_ComprehensivePathTypeMatrix(f *testing.F) {
 		assertOnDemandGetContract(t, extraPath, ifaceMode)
 		assertOnDemandSetGetCase(t, extraPath, raw, ifaceMode, extraValueKind)
 		assertOnDemandInvalidReceiverContract(t, extraPath, onDemandValue(raw, extraValueKind))
+		assertOnDemandPromotedContracts(t, raw)
 	})
 }
