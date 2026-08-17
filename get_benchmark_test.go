@@ -1,6 +1,7 @@
 package jq_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/linkdata/jq"
@@ -30,6 +31,14 @@ type benchmarkGetWide struct {
 	Eighth  int
 	Ninth   int
 	Tenth   int
+}
+
+func benchmarkPointerInterfaces(value any, depth int) any {
+	for range depth {
+		next := value
+		value = &next
+	}
+	return value
 }
 
 func BenchmarkGet(b *testing.B) {
@@ -62,6 +71,29 @@ func BenchmarkGet(b *testing.B) {
 			got, err := jq.Get(&value, "Tenth")
 			if err != nil || got != 10 {
 				b.Fatalf("Get = %v, %v; want 10, nil", got, err)
+			}
+		}
+	})
+
+	b.Run("DeepPointerInterfaces", func(b *testing.B) {
+		value := benchmarkPointerInterfaces(&benchmarkGetChild{Value: 1}, 2048)
+		b.ReportAllocs()
+		for b.Loop() {
+			got, err := jq.Get(value, "value")
+			if err != nil || got != 1 {
+				b.Fatalf("Get = %v, %v; want 1, nil", got, err)
+			}
+		}
+	})
+
+	b.Run("PointerInterfaceCycle", func(b *testing.B) {
+		var value any
+		value = &value
+		b.ReportAllocs()
+		for b.Loop() {
+			got, err := jq.Get(value, "missing")
+			if got != nil || !errors.Is(err, jq.ErrPathNotFound) {
+				b.Fatalf("Get = %v, %v; want nil, ErrPathNotFound", got, err)
 			}
 		}
 	})

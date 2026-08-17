@@ -1,30 +1,14 @@
 package jq_test
 
 import (
-	"os"
-	"os/exec"
-	"runtime/debug"
 	"strings"
 	"testing"
 
 	"github.com/linkdata/jq"
 )
 
-const largeEmptyComponentPathEnv = "JQ_TEST_LARGE_EMPTY_COMPONENT_PATH"
-
 func TestLargeEmptyComponentPath(t *testing.T) {
-	if os.Getenv(largeEmptyComponentPathEnv) == "1" {
-		// Keep a recursive regression from consuming the runtime's full stack allowance.
-		debug.SetMaxStack(64 << 20)
-		testLargeEmptyComponentPath(t)
-		return
-	}
-
-	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestLargeEmptyComponentPath$") // #nosec G204,G702 -- re-executes the current test binary with constant arguments
-	cmd.Env = append(os.Environ(), largeEmptyComponentPathEnv+"=1")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("large empty component path subprocess: %v\n%s", err, output)
-	}
+	runIsolatedTest(t, testLargeEmptyComponentPath)
 }
 
 func testLargeEmptyComponentPath(t *testing.T) {

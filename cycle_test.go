@@ -1,21 +1,12 @@
 package jq_test
 
 import (
-	"context"
-	"errors"
-	"os"
-	"os/exec"
-	"runtime/debug"
 	"testing"
-	"time"
 
 	"github.com/linkdata/jq"
 )
 
-const (
-	pointerInterfaceCycleEnv = "JQ_TEST_POINTER_INTERFACE_CYCLE"
-	deepPointerChainDepth    = 1024 // exceeds the delayed cycle-tracking threshold
-)
+const deepPointerChainDepth = 1024
 
 type cyclicNode struct {
 	Next  any
@@ -57,27 +48,7 @@ func requireSelfPointerInterfaceCycle(t *testing.T, value any) {
 }
 
 func TestPointerInterfaceCycle(t *testing.T) {
-	if os.Getenv(pointerInterfaceCycleEnv) == "1" {
-		// Keep a recursive regression from consuming the runtime's full stack allowance.
-		debug.SetMaxStack(16 << 20)
-		testPointerInterfaceCycle(t)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPointerInterfaceCycle$") // #nosec G204,G702 -- re-executes the current test binary with constant arguments
-	cmd.Env = append(os.Environ(), pointerInterfaceCycleEnv+"=1")
-	output, err := cmd.CombinedOutput()
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		t.Fatalf("pointer/interface cycle subprocess did not terminate within 10 seconds\n%s", output)
-	}
-	if err != nil {
-		t.Fatalf("pointer/interface cycle subprocess: %v\n%s", err, output)
-	}
-	// The subprocess protects the test process from a recursive regression.
-	// Repeating the assertions here records coverage only after that preflight succeeds.
-	testPointerInterfaceCycle(t)
+	runIsolatedTest(t, testPointerInterfaceCycle)
 }
 
 func testPointerInterfaceCycle(t *testing.T) {
@@ -164,15 +135,14 @@ func TestPointerRevisitAfterPathProgress(t *testing.T) {
 	}
 
 	calls := 0
+	observed := 0
 	changed, err = jq.SetChecked(value, "Next.Next.Value", 3, func() error {
 		calls++
-		if leaf.Value != 3 {
-			t.Fatalf("checker observed value %d, want 3", leaf.Value)
-		}
+		observed = leaf.Value
 		return nil
 	})
-	if err != nil || !changed || calls != 1 || leaf.Value != 3 {
-		t.Fatalf("SetChecked = (%t, %v), calls/value = %d/%d; want true, nil, 1/3", changed, err, calls, leaf.Value)
+	if err != nil || !changed || calls != 1 || observed != 3 || leaf.Value != 3 {
+		t.Fatalf("SetChecked = (%t, %v), calls/observed/value = %d/%d/%d; want true, nil, 1/3/3", changed, err, calls, observed, leaf.Value)
 	}
 }
 
