@@ -86,6 +86,19 @@ traverse that component on paths to reachable exported fields. A path ending at
 the embedded field returns `ErrPathNotFound`, as does a map-to-struct assignment
 to it.
 
+## Change detection
+
+`Set` reports whether it performed a write. For an existing destination value,
+`Set` skips an assignable replacement when
+[`reflect.DeepEqual`](https://pkg.go.dev/reflect#DeepEqual) reports equality.
+This is Go deep equality, not equality of serialized JSON; `Set` does not
+marshal values to make this decision.
+
+Consequently, `Set` can report no write and retain an existing pointer, map, or
+slice, including its aliasing, when a distinct replacement is deeply equal. The
+replacement is not installed. When their referenced data is independent, later
+mutations through the replacement are not visible through the retained value.
+
 ## Checked updates
 
 `SetChecked` tentatively applies the same operation as `Set`, then calls a
@@ -93,9 +106,10 @@ checker against the resulting object. A checker error restores the original
 object and is returned unchanged. A checker panic also restores the object
 before the panic continues.
 
-The checker runs only when `Set` reports a write. It may inspect or marshal the
-tentative object, but it must not mutate it. When the checker uses `Get`, a path
-ending at an explicitly named unexported embedded field returns
-`ErrPathNotFound`, even after a tentative update beneath it. Callers are
-responsible for synchronizing access throughout `SetChecked`, including while
-the checker runs.
+The checker runs only when `Set` reports a write. A deeply equal assignable
+replacement skipped by `Set` therefore does not invoke it. The checker may
+inspect or marshal the tentative object, but it must not mutate it. When the
+checker uses `Get`, a path ending at an explicitly named unexported embedded
+field returns `ErrPathNotFound`, even after a tentative update beneath it.
+Callers are responsible for synchronizing access throughout `SetChecked`,
+including while the checker runs.
