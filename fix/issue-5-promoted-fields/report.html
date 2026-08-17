@@ -184,7 +184,8 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
         // A staged struct still shares data through pointers. Use a local log when
         // the caller has no transaction, so failed staging can restore those values.
         <span class="cov8" title="1">var local undoLog
-        if log == nil </span><span class="cov8" title="1">{
+        ownsLog := log == nil
+        if ownsLog </span><span class="cov8" title="1">{
                 log = &amp;local
         }</span>
         <span class="cov8" title="1">fields := cachedStructFields(tp)
@@ -201,14 +202,14 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
                         err = errPathNotFound{name, tp.String()}
                         break</span>
                 }
-                <span class="cov8" title="1">switch value.Kind() </span>{
-                case reflect.Interface:<span class="cov8" title="1">
+                <span class="cov8" title="1">if value.Kind() == reflect.Interface </span><span class="cov8" title="1">{
                         if value.IsNil() </span><span class="cov8" title="1">{
                                 value = reflect.Zero(field.Type())
                         }</span> else<span class="cov8" title="1"> {
                                 value = value.Elem()
                         }</span>
-                case reflect.Pointer:<span class="cov8" title="1">
+                }
+                <span class="cov8" title="1">if value.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
                         if value.IsNil() </span><span class="cov8" title="1">{
                                 value = reflect.Zero(field.Type())
                         }</span> else<span class="cov8" title="1"> if field.Kind() != reflect.Pointer </span><span class="cov8" title="1">{
@@ -233,18 +234,17 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
                 return
         }</span>
         <span class="cov8" title="1">changed = false
-        local.rollback()
-        return</span>
+        if ownsLog </span><span class="cov8" title="1">{
+                log.rollback()
+        }</span>
+        <span class="cov8" title="1">return</span>
 }
 
-// prepareAssignment returns a candidate for a new slice element.
-//
-// Its caller supplies a zero destination, so preparing the candidate cannot
-// mutate data reachable from the existing slice.
-//
-// It intentionally mirrors the dispatch in [stageValue]: a new zero element
-// cannot be observed before it is appended and does not need change detection.
-func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err error) <span class="cov8" title="1">{
+// stageNewElement returns a candidate for a new slice element.
+func stageNewElement(from, into reflect.Value) (candidate reflect.Value, err error) <span class="cov8" title="1">{
+        // Keep this dispatch separate from stageValue. The caller supplies a zero
+        // destination that cannot be observed before append, so change detection is
+        // unnecessary.
         if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
                 candidate = from
                 return
@@ -350,7 +350,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
                                         if !value.IsValid() </span><span class="cov8" title="1">{
                                                 value = zero
                                         }</span>
-                                        <span class="cov8" title="1">if candidate, err = prepareAssignment(value, zero); err != nil </span><span class="cov8" title="1">{
+                                        <span class="cov8" title="1">if candidate, err = stageNewElement(value, zero); err != nil </span><span class="cov8" title="1">{
                                                 return
                                         }</span>
                                 } else<span class="cov8" title="1"> {
@@ -484,6 +484,10 @@ func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" 
 // a nil pointer, including a nil anonymous pointer, returns an error matching
 // [ErrPathNotFound].
 //
+// Selecting an explicitly named unexported embedded field directly returns an
+// error matching [ErrPathNotFound]. Exported fields below it remain accessible
+// through a longer path.
+//
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
 // zero or more ASCII decimal digits. The index must be at most 4294967294 and
@@ -491,10 +495,10 @@ func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" 
 func Get(obj any, jspath string) (val any, err error) <span class="cov8" title="1">{
         rv := reflect.ValueOf(obj)
         if rv, _, err = getSet(rv, jspath, nil); err == nil </span><span class="cov8" title="1">{
-                err = ErrPathNotFound
                 if rv.CanInterface() </span><span class="cov8" title="1">{
                         val = rv.Interface()
-                        err = nil
+                }</span> else<span class="cov8" title="1"> {
+                        err = errPathNotFound{jspath, rv.Type().String()}
                 }</span>
         }
         <span class="cov8" title="1">return</span>
@@ -522,7 +526,8 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // Struct components follow the field-selection rules documented by [Get]. Map
 // values assigned to structs match string keys by the same rules. Set does not
 // allocate nil pointers encountered during traversal, including nil anonymous
-// pointers; such paths return an error matching [ErrPathNotFound].
+// pointers; such paths return an error matching [ErrPathNotFound]. A map key
+// that resolves through a nil anonymous pointer returns the same error.
 //
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.
@@ -577,6 +582,8 @@ import (
 
 var structFieldsCache sync.Map
 
+// cachedStructFields returns a shared map of JSON names to field paths.
+// Callers must not modify the map or paths.
 func cachedStructFields(tp reflect.Type) (fields map[string][]int) <span class="cov8" title="1">{
         if cached, ok := structFieldsCache.Load(tp); ok </span><span class="cov8" title="1">{
                 return cached.(map[string][]int)
@@ -586,6 +593,7 @@ func cachedStructFields(tp reflect.Type) (fields map[string][]int) <span class="
         return actual.(map[string][]int)</span>
 }
 
+// resolveStructFields applies encoding/json v1's embedding and dominance rules.
 func resolveStructFields(tp reflect.Type) (resolved map[string][]int) <span class="cov8" title="1">{
         type queueEntry struct {
                 typ           reflect.Type
@@ -648,8 +656,8 @@ func resolveStructFields(tp reflect.Type) (resolved map[string][]int) <span clas
                         }
                         <span class="cov8" title="1">if parent.visitChildren </span><span class="cov8" title="1">{
                                 queue = append(queue, queueEntry{typ: fieldType, index: index, visitChildren: !seen[fieldType]})
+                                seen[fieldType] = true
                         }</span>
-                        <span class="cov8" title="1">seen[fieldType] = true</span>
                 }
         }
 
@@ -693,6 +701,8 @@ func validJSONFieldName(name string) (valid bool) <span class="cov8" title="1">{
         <span class="cov8" title="1">return true</span>
 }
 
+// structFieldValue follows index without allocating pointers and reports whether
+// it dereferenced one. A nil pointer returns an invalid field.
 func structFieldValue(value reflect.Value, index []int) (field reflect.Value, throughPointer bool) <span class="cov8" title="1">{
         field = value
         for _, i := range index </span><span class="cov8" title="1">{
