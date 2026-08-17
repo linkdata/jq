@@ -453,6 +453,8 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
         case reflect.Struct:<span class="cov8" title="1">
                 if index, ok := cachedStructFields(v.Type())[elem]; ok </span><span class="cov8" title="1">{
                         if field, _ := structFieldValue(v, index); field.IsValid() </span><span class="cov8" title="1">{
+                                // CanInterface is how Get determines whether it can return a field. A dots-only
+                                // tail also ends here; break reaches the shared error without hiding deeper errors.
                                 if set &amp;&amp; !field.CanInterface() &amp;&amp; strings.Trim(tail, ".") == "" </span><span class="cov8" title="1">{
                                         break</span>
                                 }
