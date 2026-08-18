@@ -361,7 +361,7 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 	if x, err = Get(obj, jspath); err == nil {
 		var ok bool
 		if val, ok = x.(T); !ok {
-			err = errTypeMismatch{reflect.TypeOf(val), reflect.TypeOf(x)}
+			err = errTypeMismatch{reflect.TypeFor[T](), reflect.TypeOf(x)}
 		}
 	}
 	return
