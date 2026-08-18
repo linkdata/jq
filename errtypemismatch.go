@@ -14,7 +14,7 @@ type errTypeMismatch struct {
 }
 
 func (e errTypeMismatch) Error() string {
-	return fmt.Sprintf("jq: expected %s, not %s", e.expect, e.actual)
+	return fmt.Sprintf("jq: expected %v, not %v", e.expect, e.actual)
 }
 
 func (errTypeMismatch) Is(other error) bool {

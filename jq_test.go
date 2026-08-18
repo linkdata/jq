@@ -452,6 +452,30 @@ func TestGetAsTypeMismatch(t *testing.T) {
 	}
 }
 
+func TestGetAsInterfaceTypeMismatch(t *testing.T) {
+	tests := []struct {
+		name string
+		obj  any
+		path string
+		want string
+	}{
+		{"concrete actual", 42, "", "jq: expected error, not int"},
+		{"nil actual", map[string]any{"value": nil}, "value", "jq: expected error, not <nil>"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := jq.GetAs[error](tc.obj, tc.path)
+			if !errors.Is(err, jq.ErrTypeMismatch) {
+				t.Fatalf("error = %v; want ErrTypeMismatch", err)
+			}
+			if got := err.Error(); got != tc.want {
+				t.Fatalf("error = %q; want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSetTypeMismatch(t *testing.T) {
 	x := testStructVal
 	changed, err := jq.Set(&x, "I", "foo")
