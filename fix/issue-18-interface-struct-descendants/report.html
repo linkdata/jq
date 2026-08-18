@@ -349,11 +349,9 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
         elem, tail, _ := strings.Cut(jspath, ".")
         if elem == "" </span><span class="cov8" title="1">{
                 if set </span><span class="cov8" title="1">{
-                        if !v.CanSet() </span><span class="cov8" title="1">{
-                                err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-                                return
-                        }</span>
-                        <span class="cov8" title="1">value := setting.value
+                        // Set starts at the receiver's settable element. Descent sites reject
+                        // unsettable endpoints or stage them in settable values before reaching here.
+                        value := setting.value
                         if !value.IsValid() </span><span class="cov8" title="1">{
                                 value = reflect.Zero(v.Type())
                         }</span>
@@ -424,8 +422,12 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
                                 return</span>
                         }
                         <span class="cov8" title="1">if idx &lt; v.Len() </span><span class="cov8" title="1">{
-                                return getSet(v.Index(idx), tail, setting)
-                        }</span>
+                                element := v.Index(idx)
+                                if set &amp;&amp; !element.CanSet() &amp;&amp; strings.Trim(tail, ".") == "" </span><span class="cov8" title="1">{
+                                        break</span>
+                                }
+                                <span class="cov8" title="1">return getSet(element, tail, setting)</span>
+                        }
                 }
         case reflect.Map:<span class="cov8" title="1">
                 keyType := v.Type().Key()
@@ -483,9 +485,9 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
         case reflect.Struct:<span class="cov8" title="1">
                 if index, ok := cachedStructFields(v.Type())[elem]; ok </span><span class="cov8" title="1">{
                         if field, _ := structFieldValue(v, index); field.IsValid() </span><span class="cov8" title="1">{
-                                // CanInterface is how Get determines whether it can return a field. A dots-only
-                                // tail also ends here; break reaches the shared error without hiding deeper errors.
-                                if set &amp;&amp; !field.CanInterface() &amp;&amp; strings.Trim(tail, ".") == "" </span><span class="cov8" title="1">{
+                                // A dots-only tail ends here. Reject unsettable Set endpoints before
+                                // descent so the error retains this component and type.
+                                if set &amp;&amp; !field.CanSet() &amp;&amp; strings.Trim(tail, ".") == "" </span><span class="cov8" title="1">{
                                         break</span>
                                 }
                                 <span class="cov8" title="1">return getSet(field, tail, setting)</span>
@@ -577,11 +579,12 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // retain identity, and successful updates to promoted fields reached through
 // embedded pointers are visible through other aliases.
 //
-// When an interface contains a struct value, attempts to replace fields held
-// directly by that unaddressable struct, or to grow a slice whose header is held
-// there, return an error matching [ErrPathNotFound]. Set can still update
-// pointees, existing map entries, and existing slice elements reachable through
-// those fields.
+// When an interface contains a struct value, Set cannot replace values stored
+// inline in that struct, including nested struct fields and array elements. It
+// can update pointees, existing map entries, and existing slice elements
+// reachable from the struct. Attempts to replace an unaddressable field or array
+// element, or to grow a slice with an unaddressable header, return an error
+// matching [ErrPathNotFound].
 //
 // Set can traverse an explicitly named unexported embedded field to update a
 // reachable exported field. A path ending at the embedded field, or a
