@@ -143,7 +143,7 @@ type errTypeMismatch struct {
 }
 
 func (e errTypeMismatch) Error() string <span class="cov8" title="1">{
-        return fmt.Sprintf("jq: expected %s, not %s", e.expect, e.actual)
+        return fmt.Sprintf("jq: expected %v, not %v", e.expect, e.actual)
 }</span>
 
 func (errTypeMismatch) Is(other error) bool <span class="cov8" title="1">{
@@ -514,7 +514,7 @@ func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" 
         if x, err = Get(obj, jspath); err == nil </span><span class="cov8" title="1">{
                 var ok bool
                 if val, ok = x.(T); !ok </span><span class="cov8" title="1">{
-                        err = errTypeMismatch{reflect.TypeOf(val), reflect.TypeOf(x)}
+                        err = errTypeMismatch{reflect.TypeFor[T](), reflect.TypeOf(x)}
                 }</span>
         }
         <span class="cov8" title="1">return</span>
