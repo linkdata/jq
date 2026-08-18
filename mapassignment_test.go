@@ -80,6 +80,39 @@ func TestSetMapElementAcceptsMapToStruct(t *testing.T) {
 	}
 }
 
+func TestSetMapElementMapToStructNoOps(t *testing.T) {
+	var nilMap map[string]any
+	tests := []struct {
+		name  string
+		input any
+	}{
+		{"empty", map[string]any{}},
+		{"nil", nilMap},
+		{"unknown", map[string]any{"unknown": 2}},
+		{"non-string key", map[int]any{1: 2}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			details := &mapElementDetails{Number: 1}
+			initial := mapElementItem{mapElementDetails: details, Label: "original"}
+			items := map[string]mapElementItem{"key": initial}
+			checks := 0
+
+			changed, err := jq.SetChecked(&items, "key", tc.input, func() error {
+				checks++
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if changed || checks != 0 || items["key"] != initial || details.Number != 1 {
+				t.Fatalf("SetChecked = (%t, %v, %d calls), item = %#v; want false, nil, 0 calls, unchanged", changed, err, checks, items["key"])
+			}
+		})
+	}
+}
+
 func TestSetMapElementConvertsNumber(t *testing.T) {
 	items := map[string]int{"key": 1}
 

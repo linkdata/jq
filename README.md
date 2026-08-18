@@ -86,6 +86,21 @@ traverse that component on paths to reachable exported fields. A path ending at
 the embedded field returns `ErrPathNotFound`, as does a map-to-struct assignment
 to it.
 
+## Assignments
+
+`Set` converts among integer kinds other than `uintptr` and floating-point kinds
+using
+[Go's numeric conversion rules](https://go.dev/ref/spec#Conversions_between_numeric_types).
+These conversions can truncate, wrap, or lose precision and do not report
+overflow.
+
+For map inputs assigned to structs, only entries with matching string keys
+update fields; all other entries are ignored. For an existing struct, unselected
+fields are retained and `Set` reports no write if no selected field changes; an
+appended struct starts from zero. Existing overlays are shallow: preserved
+pointers retain identity, and successful updates to promoted fields reached
+through embedded pointers are visible through other aliases.
+
 ## Change detection
 
 `Set` reports whether it performed a write. For an existing destination value,
