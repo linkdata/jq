@@ -11,12 +11,17 @@ type interfaceStructItem struct {
 	Value int
 }
 
+type interfaceStructNested struct {
+	Value int
+}
+
 type interfaceStructValue struct {
 	Scalar  int
 	Pointer *interfaceStructItem
 	Map     map[string]int
 	Slice   []int
 	Array   [1]int
+	Nested  interfaceStructNested
 }
 
 func newInterfaceStructValue() (root any, pointer *interfaceStructItem, mapped map[string]int, backing []int) {
@@ -29,6 +34,7 @@ func newInterfaceStructValue() (root any, pointer *interfaceStructItem, mapped m
 		Map:     mapped,
 		Slice:   backing[:1],
 		Array:   [1]int{1},
+		Nested:  interfaceStructNested{Value: 1},
 	}
 	return
 }
@@ -45,6 +51,9 @@ func requireInterfaceStructValue(t *testing.T, root any, pointer *interfaceStruc
 	}
 	if value.Array != [1]int{1} {
 		t.Fatalf("array = %v, want [1]", value.Array)
+	}
+	if value.Nested.Value != 1 {
+		t.Fatalf("nested value = %d, want 1", value.Nested.Value)
 	}
 	if len(value.Slice) != 1 || cap(value.Slice) != 2 || &value.Slice[0] != &backing[0] {
 		t.Fatalf("slice identity/shape = %v len/cap %d/%d, want original backing with len/cap 1/2", value.Slice, len(value.Slice), cap(value.Slice))
@@ -124,12 +133,14 @@ func TestSetInterfaceStructFailuresAreAtomic(t *testing.T) {
 		path  string
 		value any
 		want  error
+		text  string
 	}{
-		{"direct scalar", "Scalar", 2, jq.ErrPathNotFound},
-		{"direct pointer", "Pointer", interfaceStructItem{Value: 2}, jq.ErrPathNotFound},
-		{"wrong descendant type", "Pointer.Value", "wrong", jq.ErrTypeMismatch},
-		{"slice append", "Slice.1", 2, jq.ErrPathNotFound},
-		{"array element", "Array.0", 2, jq.ErrPathNotFound},
+		{"direct scalar", "Scalar", 2, jq.ErrPathNotFound, `jq: "Scalar" not found in jq_test.interfaceStructValue`},
+		{"direct pointer", "Pointer", interfaceStructItem{Value: 2}, jq.ErrPathNotFound, `jq: "Pointer" not found in jq_test.interfaceStructValue`},
+		{"wrong descendant type", "Pointer.Value", "wrong", jq.ErrTypeMismatch, ""},
+		{"slice append", "Slice.1", 2, jq.ErrPathNotFound, `jq: "1" not found in []int`},
+		{"array element", "Array.0", 2, jq.ErrPathNotFound, `jq: "0" not found in [1]int`},
+		{"nested field", "Nested.Value", 2, jq.ErrPathNotFound, `jq: "Value" not found in jq_test.interfaceStructNested`},
 	}
 
 	for _, tc := range tests {
@@ -140,9 +151,70 @@ func TestSetInterfaceStructFailuresAreAtomic(t *testing.T) {
 			if changed || !errors.Is(err, tc.want) {
 				t.Fatalf("Set = (%t, %v), want false, %v", changed, err, tc.want)
 			}
+			if tc.text != "" && err.Error() != tc.text {
+				t.Fatalf("Set error = %q, want %q", err, tc.text)
+			}
 			value := requireInterfaceStructValue(t, root, pointer, mapped, backing)
 			if value.Scalar != 1 || pointer.Value != 1 || mapped["key"] != 1 || backing[0] != 1 || backing[1] != 99 {
 				t.Fatalf("failed Set changed value: %#v, pointer/map/backing = %d/%d/%v", value, pointer.Value, mapped["key"], backing)
+			}
+		})
+	}
+}
+
+type interfaceStructAtomicDetails struct {
+	Value int
+}
+
+type interfaceStructAtomicItem struct {
+	*interfaceStructAtomicDetails
+	Text string
+}
+
+type interfaceStructAtomicRoot struct {
+	Items []interfaceStructAtomicItem
+}
+
+func TestSetInterfaceStructMapAssignmentFailureIsAtomic(t *testing.T) {
+	tests := []struct {
+		name string
+		set  func(*any, *int) (bool, error)
+	}{
+		{"Set", func(root *any, _ *int) (bool, error) {
+			return jq.Set(root, "Items.0", map[string]any{"Value": 2, "Text": 3})
+		}},
+		{"SetChecked", func(root *any, calls *int) (bool, error) {
+			return jq.SetChecked(root, "Items.0", map[string]any{"Value": 2, "Text": 3}, func() error {
+				(*calls)++
+				return nil
+			})
+		}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Each call builds a fresh source map. Repeat to exercise both the
+			// valid-first partial write and invalid-first iteration orders.
+			for range 200 {
+				details := &interfaceStructAtomicDetails{Value: 1}
+				items := []interfaceStructAtomicItem{{interfaceStructAtomicDetails: details, Text: "original"}}
+				var root any = interfaceStructAtomicRoot{Items: items}
+				calls := 0
+
+				changed, err := tc.set(&root, &calls)
+				if changed || !errors.Is(err, jq.ErrTypeMismatch) || calls != 0 {
+					t.Fatalf("set = (%t, %v, %d calls), want false, ErrTypeMismatch, 0 calls", changed, err, calls)
+				}
+				value, ok := root.(interfaceStructAtomicRoot)
+				if !ok {
+					t.Fatalf("root type = %T, want interfaceStructAtomicRoot", root)
+				}
+				if len(value.Items) != 1 || &value.Items[0] != &items[0] || value.Items[0].interfaceStructAtomicDetails != details {
+					t.Fatal("failed map assignment replaced the slice element or its pointer")
+				}
+				if details.Value != 1 || items[0].Text != "original" {
+					t.Fatalf("failed map assignment left item = %#v, details = %#v", items[0], details)
+				}
 			}
 		})
 	}

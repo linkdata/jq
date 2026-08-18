@@ -196,10 +196,8 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 	elem, tail, _ := strings.Cut(jspath, ".")
 	if elem == "" {
 		if set {
-			if !v.CanSet() {
-				err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-				return
-			}
+			// Set starts at the receiver's settable element. Descent sites reject
+			// unsettable endpoints or stage them in settable values before reaching here.
 			value := setting.value
 			if !value.IsValid() {
 				value = reflect.Zero(v.Type())
@@ -271,7 +269,11 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 				return
 			}
 			if idx < v.Len() {
-				return getSet(v.Index(idx), tail, setting)
+				element := v.Index(idx)
+				if set && !element.CanSet() && strings.Trim(tail, ".") == "" {
+					break
+				}
+				return getSet(element, tail, setting)
 			}
 		}
 	case reflect.Map:
@@ -330,9 +332,9 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 	case reflect.Struct:
 		if index, ok := cachedStructFields(v.Type())[elem]; ok {
 			if field, _ := structFieldValue(v, index); field.IsValid() {
-				// CanInterface is how Get determines whether it can return a field. A dots-only
-				// tail also ends here; break reaches the shared error without hiding deeper errors.
-				if set && !field.CanInterface() && strings.Trim(tail, ".") == "" {
+				// A dots-only tail ends here. Reject unsettable Set endpoints before
+				// descent so the error retains this component and type.
+				if set && !field.CanSet() && strings.Trim(tail, ".") == "" {
 					break
 				}
 				return getSet(field, tail, setting)
@@ -424,11 +426,12 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // retain identity, and successful updates to promoted fields reached through
 // embedded pointers are visible through other aliases.
 //
-// When an interface contains a struct value, attempts to replace fields held
-// directly by that unaddressable struct, or to grow a slice whose header is held
-// there, return an error matching [ErrPathNotFound]. Set can still update
-// pointees, existing map entries, and existing slice elements reachable through
-// those fields.
+// When an interface contains a struct value, Set cannot replace values stored
+// inline in that struct, including nested struct fields and array elements. It
+// can update pointees, existing map entries, and existing slice elements
+// reachable from the struct. Attempts to replace an unaddressable field or array
+// element, or to grow a slice with an unaddressable header, return an error
+// matching [ErrPathNotFound].
 //
 // Set can traverse an explicitly named unexported embedded field to update a
 // reachable exported field. A path ending at the embedded field, or a
