@@ -154,7 +154,6 @@ func (errTypeMismatch) Is(other error) bool <span class="cov8" title="1">{
 		<pre class="file" id="file3" style="display: none">package jq
 
 import (
-        "errors"
         "reflect"
         "strings"
 )
@@ -341,7 +340,7 @@ func (d *pointerCycleDetector) visit(v reflect.Value) (cycle bool) <span class="
 func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Value, changed bool, err error) <span class="cov8" title="1">{
         v = obj
         if !v.IsValid() </span><span class="cov8" title="1">{
-                err = errors.Join(err, errPathNotFound{jspath, "&lt;nil&gt;"})
+                err = errPathNotFound{jspath, "&lt;nil&gt;"}
                 return
         }</span>
         <span class="cov8" title="1">set := setting != nil
@@ -363,7 +362,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
         var followedPointer bool
         for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface </span><span class="cov8" title="1">{
                 if v.IsNil() </span><span class="cov8" title="1">{
-                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                        err = errPathNotFound{jspath, v.Type().String()}
                         return
                 }</span>
                 <span class="cov8" title="1">if v.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
@@ -371,7 +370,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
                         // avoiding detector work for ordinary one-pointer traversal.
                         if followedPointer </span><span class="cov8" title="1">{
                                 if cycleDetector.visit(v) </span><span class="cov8" title="1">{
-                                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                                        err = errPathNotFound{jspath, v.Type().String()}
                                         return
                                 }</span>
                         }
