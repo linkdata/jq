@@ -62,11 +62,8 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 				value = reflect.Zero(fieldType)
 			} else if field.Kind() != reflect.Pointer {
 				element := value.Elem()
-				// Prefer the element when both fit; keep the pointer only when its
-				// method set is required by the destination.
-				if field.Kind() != reflect.Interface ||
-					element.Type().AssignableTo(fieldType) ||
-					!value.Type().AssignableTo(fieldType) {
+				// Prefer the element for concrete fields and when it satisfies the interface.
+				if field.Kind() != reflect.Interface || element.Type().AssignableTo(fieldType) {
 					value = element
 				}
 			}
@@ -429,9 +426,9 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // field-selection rules. Only entries with matching string keys update fields;
 // all other entries are ignored.
 //
-// For a non-pointer field, Set dereferences a map value that is a non-nil pointer
-// unless only the pointer implements the destination interface. A nil pointer
-// stores the field's zero value.
+// A nil pointer supplied by the map stores the field's zero value. Set
+// dereferences a non-nil pointer for a non-pointer field, except that for an
+// interface field it does so only when the element implements the interface.
 //
 // For an existing struct, unselected fields are retained and Set reports no
 // write if no selected field changes; an appended struct starts from zero.

@@ -97,9 +97,9 @@ overflow.
 For map inputs assigned to structs, only entries with matching string keys
 update fields; all other entries are ignored.
 
-For a non-pointer field, `Set` dereferences a map value that is a non-nil pointer
-unless only the pointer implements the destination interface. A nil pointer
-stores the field's zero value.
+A nil pointer supplied by the map stores the field's zero value. `Set`
+dereferences a non-nil pointer for a non-pointer field, except that for an
+interface field it does so only when the element implements the interface.
 
 For an existing struct, unselected fields are retained and `Set` reports no
 write if no selected field changes; an appended struct starts from zero.
