@@ -111,7 +111,7 @@ func stageNewElement(from, into reflect.Value) (candidate reflect.Value, err err
 	return
 }
 
-// stageValue prepares a replacement for into.
+// stageValue prepares a replacement for into and reports a change only on success.
 func stageValue(from, into reflect.Value, log *undoLog) (candidate reflect.Value, changed bool, err error) {
 	// Map candidates are shallow, so assignMap logs writes through shared
 	// pointers until the update succeeds.
@@ -299,16 +299,15 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 						if !value.IsValid() {
 							value = reflect.Zero(mapped.Type())
 						}
-						if err = assignable(value, mapped); err == nil {
-							var change bool
-							if change = !reflect.DeepEqual(mapped.Interface(), value.Interface()); change {
+						var candidate reflect.Value
+						if candidate, changed, err = stageValue(value, mapped, setting.log); err == nil {
+							if changed {
 								if setting.log == nil {
-									v.SetMapIndex(key, value)
+									v.SetMapIndex(key, candidate)
 								} else {
-									setting.log.setMapIndex(v, key, value)
+									setting.log.setMapIndex(v, key, candidate)
 								}
-								v = value
-								changed = true
+								v = candidate
 							} else {
 								v = mapped
 							}
@@ -423,12 +422,23 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // and do not create new entries. A nil val stores the destination type's zero
 // value.
 //
+// Set converts among integer kinds other than uintptr and floating-point kinds
+// using [Go numeric conversion rules]. These conversions can truncate, wrap, or
+// lose precision and do not report overflow.
+//
 // Struct components and string keys in map-to-struct assignments follow [Get]'s
-// field-selection rules. Set can traverse an explicitly named unexported
-// embedded field to update a reachable exported field. A path ending at the
-// embedded field, or a map-to-struct key selecting it, returns an error matching
-// [ErrPathNotFound]. Set does not allocate nil pointers. Traversing a nil pointer
-// or an unresolved pointer/interface cycle returns the same error.
+// field-selection rules. Only entries with matching string keys update fields;
+// all other entries are ignored. For an existing struct, unselected fields are
+// retained and Set reports no write if no selected field changes; an appended
+// struct starts from zero. Existing overlays are shallow: preserved pointers
+// retain identity, and successful updates to promoted fields reached through
+// embedded pointers are visible through other aliases.
+//
+// Set can traverse an explicitly named unexported embedded field to update a
+// reachable exported field. A path ending at the embedded field, or a
+// map-to-struct key selecting it, returns an error matching [ErrPathNotFound]. Set
+// does not allocate nil pointers. Traversing a nil pointer or an unresolved
+// pointer/interface cycle returns the same error.
 //
 // For an existing destination value, Set skips an assignable replacement when
 // [reflect.DeepEqual] reports that the current and replacement values are equal.
@@ -439,6 +449,8 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 //
 // Set leaves obj unchanged when it returns an error. It does not synchronize
 // access to obj; callers must prevent concurrent reads and writes.
+//
+// [Go numeric conversion rules]: https://go.dev/ref/spec#Conversions_between_numeric_types
 func Set(obj any, jspath string, val any) (changed bool, err error) {
 	return set(obj, jspath, val, nil)
 }

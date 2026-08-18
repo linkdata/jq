@@ -14,13 +14,14 @@ type fuzzSubType struct {
 }
 
 type fuzzType struct {
-	S   string
-	I   int
-	L   []int
-	M   map[string]any
-	P   *fuzzSubType
-	Any any
-	In  fuzzSubType
+	S         string
+	I         int
+	L         []int
+	M         map[string]any
+	StructMap map[string]fuzzSubType
+	P         *fuzzSubType
+	Any       any
+	In        fuzzSubType
 }
 
 func newFuzzType() fuzzType {
@@ -32,6 +33,9 @@ func newFuzzType() fuzzType {
 			"s":   "map",
 			"n":   3,
 			"sub": map[string]any{"x": 5},
+		},
+		StructMap: map[string]fuzzSubType{
+			"key": {S: "map struct", N: 6},
 		},
 		P:   &fuzzSubType{S: "ptr", N: 9},
 		Any: []int{1},
@@ -96,6 +100,7 @@ func FuzzGet_NoPanicAndErrorContract(f *testing.F) {
 		"L.foo",
 		"M.s",
 		"M.sub.x",
+		"StructMap.key.S",
 		"P.S",
 		"P.Missing",
 		"Any.0",
@@ -147,6 +152,7 @@ func FuzzSet_NoPanicIdempotent(f *testing.F) {
 		{"L.foo", []byte{5}, 2},
 		{"M.n", []byte{6}, 2},
 		{"M.sub.x", []byte{7}, 2},
+		{"StructMap.key", []byte("struct map"), 5},
 		{"P.S", []byte("p"), 1},
 		{"Any.0", []byte{8}, 2},
 		{"Any.1", []byte{9}, 2},
@@ -212,6 +218,8 @@ func FuzzSetChecked_AtomicCallbackContract(f *testing.F) {
 		{"L.2", []byte("wrong"), 1, 1},
 		{"P.S", []byte("panic"), 1, 2},
 		{"M.n", []byte{6}, 2, 3},
+		{"StructMap.key", []byte("struct map"), 5, 0},
+		{"StructMap.key", []byte("rollback"), 5, 1},
 		{"Nope", []byte("x"), 1, 0},
 	} {
 		f.Add(seed.path, seed.raw, seed.mode, seed.decision)
