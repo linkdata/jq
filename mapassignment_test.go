@@ -51,6 +51,65 @@ func TestSetStructAcceptsInterfacePointerMapValue(t *testing.T) {
 	})
 }
 
+func TestSetStructAcceptsPointerOnlyInterfaceMapValue(t *testing.T) {
+	type holder struct {
+		Err error `json:"err"`
+	}
+	input := errors.New("boom")
+
+	t.Run("Set", func(t *testing.T) {
+		var value holder
+		changed, err := jq.Set(&value, "", map[string]any{"err": input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !changed || value.Err != input {
+			t.Fatalf("Set = (%t, %v), error = %v; want true, nil, original error", changed, err, value.Err)
+		}
+
+		changed, err = jq.Set(&value, "", map[string]any{"err": input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed || value.Err != input {
+			t.Fatalf("repeated Set = (%t, %v), error = %v; want false, nil, original error", changed, err, value.Err)
+		}
+	})
+
+	t.Run("SetChecked accepted", func(t *testing.T) {
+		var value holder
+		calls := 0
+		var observed error
+		changed, err := jq.SetChecked(&value, "", map[string]any{"err": input}, func() error {
+			calls++
+			observed = value.Err
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !changed || calls != 1 || observed != input || value.Err != input {
+			t.Fatalf("SetChecked = (%t, %v), calls/error = %d/%v, stored = %v; want true, nil, 1/original, original", changed, err, calls, observed, value.Err)
+		}
+	})
+
+	t.Run("SetChecked rejected", func(t *testing.T) {
+		before := errors.New("before")
+		rejected := errors.New("rejected")
+		value := holder{Err: before}
+		calls := 0
+		var observed error
+		changed, err := jq.SetChecked(&value, "", map[string]any{"err": input}, func() error {
+			calls++
+			observed = value.Err
+			return rejected
+		})
+		if changed || err != rejected || calls != 1 || observed != input || value.Err != before {
+			t.Fatalf("SetChecked = (%t, %v), calls/error = %d/%v, stored = %v; want false, exact rejection, 1/original, previous", changed, err, calls, observed, value.Err)
+		}
+	})
+}
+
 func TestSetMapElementAcceptsMapToStruct(t *testing.T) {
 	details := &mapElementDetails{Number: 1}
 	items := map[string]mapElementItem{
