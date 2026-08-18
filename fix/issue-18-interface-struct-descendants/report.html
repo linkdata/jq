@@ -524,12 +524,12 @@ func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" 
 // with a component named by the tag.
 //
 // Exported fields promoted through unexported embedded structs are readable with
-// Get and writable with [Set], including through map-to-struct assignments. An
-// exact `json:"-"` tag excludes a field from the path namespace. Get and [Set]
-// can traverse an explicitly named unexported embedded field on paths to
-// reachable exported fields, but a path ending at the embedded field returns an
-// error matching [ErrPathNotFound]. Traversing a nil pointer or an unresolved
-// pointer/interface cycle returns the same error.
+// Get and writable with [Set] when addressable, including through map-to-struct
+// assignments. An exact `json:"-"` tag excludes a field from the path namespace.
+// Get and [Set] can traverse an explicitly named unexported embedded field on
+// paths to reachable exported fields, but a path ending at the embedded field
+// returns an error matching [ErrPathNotFound]. Traversing a nil pointer or an
+// unresolved pointer/interface cycle returns the same error.
 //
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
