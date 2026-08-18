@@ -95,11 +95,18 @@ These conversions can truncate, wrap, or lose precision and do not report
 overflow.
 
 For map inputs assigned to structs, only entries with matching string keys
-update fields; all other entries are ignored. For an existing struct, unselected
-fields are retained and `Set` reports no write if no selected field changes; an
-appended struct starts from zero. Existing overlays are shallow: preserved
-pointers retain identity, and successful updates to promoted fields reached
-through embedded pointers are visible through other aliases.
+update fields; all other entries are ignored.
+
+A nil pointer supplied by the map stores the field's zero value. `Set`
+dereferences a non-nil pointer for a non-pointer field, except that for an
+interface field it does so only when the pointed-to type implements the
+interface.
+
+For an existing struct, unselected fields are retained and `Set` reports no
+write if no selected field changes; an appended struct starts from zero.
+Existing overlays are shallow: preserved pointers retain identity, and
+successful updates to promoted fields reached through embedded pointers are
+visible through other aliases.
 
 When an interface contains a struct value, `Set` cannot replace values stored
 inline in that struct, including nested struct fields and array elements. It can

@@ -48,9 +48,10 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 			err = errPathNotFound{name, tp.String()}
 			break
 		}
+		fieldType := field.Type()
 		if value.Kind() == reflect.Interface {
 			if value.IsNil() {
-				value = reflect.Zero(field.Type())
+				value = reflect.Zero(fieldType)
 			} else {
 				value = value.Elem()
 			}
@@ -58,9 +59,13 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 		// Unwrapping an interface can expose a pointer.
 		if value.Kind() == reflect.Pointer {
 			if value.IsNil() {
-				value = reflect.Zero(field.Type())
+				value = reflect.Zero(fieldType)
 			} else if field.Kind() != reflect.Pointer {
-				value = value.Elem()
+				element := value.Elem()
+				// Prefer the element for concrete fields and when it satisfies the interface.
+				if field.Kind() != reflect.Interface || element.Type().AssignableTo(fieldType) {
+					value = element
+				}
 			}
 		}
 		var candidate reflect.Value
@@ -419,11 +424,18 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 //
 // Struct components and string keys in map-to-struct assignments follow [Get]'s
 // field-selection rules. Only entries with matching string keys update fields;
-// all other entries are ignored. For an existing struct, unselected fields are
-// retained and Set reports no write if no selected field changes; an appended
-// struct starts from zero. Existing overlays are shallow: preserved pointers
-// retain identity, and successful updates to promoted fields reached through
-// embedded pointers are visible through other aliases.
+// all other entries are ignored.
+//
+// A nil pointer supplied by the map stores the field's zero value. Set
+// dereferences a non-nil pointer for a non-pointer field, except that for an
+// interface field it does so only when the pointed-to type implements the
+// interface.
+//
+// For an existing struct, unselected fields are retained and Set reports no
+// write if no selected field changes; an appended struct starts from zero.
+// Existing overlays are shallow: preserved pointers retain identity, and
+// successful updates to promoted fields reached through embedded pointers are
+// visible through other aliases.
 //
 // When an interface contains a struct value, Set cannot replace values stored
 // inline in that struct, including nested struct fields and array elements. It

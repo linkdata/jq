@@ -16,6 +16,14 @@ type mapElementItem struct {
 	Label string `json:"label"`
 }
 
+type mapAssignmentError struct {
+	message string
+}
+
+func (e *mapAssignmentError) Error() string {
+	return e.message
+}
+
 func TestSetStructAcceptsInterfacePointerMapValue(t *testing.T) {
 	t.Run("value field", func(t *testing.T) {
 		x := testStructVal
@@ -48,6 +56,121 @@ func TestSetStructAcceptsInterfacePointerMapValue(t *testing.T) {
 		maybeError(t, err)
 		mustEqual(t, changed, true)
 		mustEqual(t, x.Value, nil)
+	})
+
+	t.Run("numeric conversion", func(t *testing.T) {
+		type container struct {
+			Value int64
+		}
+		var x container
+		value := int8(42)
+		changed, err := jq.Set(&x, "", map[string]any{"Value": &value})
+		maybeError(t, err)
+		mustEqual(t, changed, true)
+		mustEqual(t, x.Value, int64(42))
+	})
+
+	t.Run("map to struct", func(t *testing.T) {
+		type child struct {
+			Value int
+		}
+		type container struct {
+			Child child
+		}
+		var x container
+		value := map[string]any{"Value": 42}
+		changed, err := jq.Set(&x, "", map[string]any{"Child": &value})
+		maybeError(t, err)
+		mustEqual(t, changed, true)
+		mustEqual(t, x.Child.Value, 42)
+	})
+}
+
+func TestSetStructAcceptsPointerOnlyInterfaceMapValue(t *testing.T) {
+	type holder struct {
+		Err error `json:"err"`
+	}
+	input := errors.New("boom")
+
+	t.Run("Set", func(t *testing.T) {
+		var value holder
+		changed, err := jq.Set(&value, "", map[string]any{"err": input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !changed || value.Err != input {
+			t.Fatalf("Set = (%t, %v), error = %v; want true, nil, original error", changed, err, value.Err)
+		}
+	})
+
+	t.Run("SetChecked accepted", func(t *testing.T) {
+		var value holder
+		calls := 0
+		var observed error
+		changed, err := jq.SetChecked(&value, "", map[string]any{"err": input}, func() error {
+			calls++
+			observed = value.Err
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !changed || calls != 1 || observed != input || value.Err != input {
+			t.Fatalf("SetChecked = (%t, %v), calls/error = %d/%v, stored = %v; want true, nil, 1/original, original", changed, err, calls, observed, value.Err)
+		}
+	})
+
+	t.Run("SetChecked rejected", func(t *testing.T) {
+		before := errors.New("before")
+		rejected := errors.New("rejected")
+		value := holder{Err: before}
+		calls := 0
+		var observed error
+		changed, err := jq.SetChecked(&value, "", map[string]any{"err": input}, func() error {
+			calls++
+			observed = value.Err
+			return rejected
+		})
+		if changed || err != rejected || calls != 1 || observed != input || value.Err != before {
+			t.Fatalf("SetChecked = (%t, %v), calls/error = %d/%v, stored = %v; want false, exact rejection, 1/original, previous", changed, err, calls, observed, value.Err)
+		}
+	})
+
+	t.Run("pointer to interface", func(t *testing.T) {
+		var value holder
+		input := error(errors.New("element"))
+		changed, err := jq.Set(&value, "", map[string]any{"err": &input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !changed || value.Err != input {
+			t.Fatalf("Set = (%t, %v), error = %v; want true, nil, pointed-to error", changed, err, value.Err)
+		}
+	})
+
+	t.Run("mismatch reports pointer type", func(t *testing.T) {
+		var value holder
+		number := 1
+		changed, err := jq.Set(&value, "", map[string]any{"err": &number})
+		if changed || !errors.Is(err, jq.ErrTypeMismatch) {
+			t.Fatalf("Set = (%t, %v), want false, ErrTypeMismatch", changed, err)
+		}
+		if want := "jq: expected error, not *int"; err.Error() != want {
+			t.Fatalf("error = %q, want %q", err, want)
+		}
+	})
+
+	t.Run("deeply equal replacement", func(t *testing.T) {
+		before := &mapAssignmentError{message: "same"}
+		replacement := &mapAssignmentError{message: "same"}
+		value := holder{Err: before}
+		changed, err := jq.Set(&value, "", map[string]any{"err": replacement})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed || value.Err != before {
+			t.Fatalf("Set = (%t, %v), error = %v; want false, nil, previous error", changed, err, value.Err)
+		}
 	})
 }
 
