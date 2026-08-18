@@ -1,7 +1,6 @@
 package jq
 
 import (
-	"errors"
 	"reflect"
 	"strings"
 )
@@ -188,7 +187,7 @@ func (d *pointerCycleDetector) visit(v reflect.Value) (cycle bool) {
 func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Value, changed bool, err error) {
 	v = obj
 	if !v.IsValid() {
-		err = errors.Join(err, errPathNotFound{jspath, "<nil>"})
+		err = errPathNotFound{jspath, "<nil>"}
 		return
 	}
 	set := setting != nil
@@ -210,7 +209,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 	var followedPointer bool
 	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
-			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+			err = errPathNotFound{jspath, v.Type().String()}
 			return
 		}
 		if v.Kind() == reflect.Pointer {
@@ -218,7 +217,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 			// avoiding detector work for ordinary one-pointer traversal.
 			if followedPointer {
 				if cycleDetector.visit(v) {
-					err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+					err = errPathNotFound{jspath, v.Type().String()}
 					return
 				}
 			}
