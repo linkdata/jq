@@ -75,8 +75,8 @@ component. For example, an anonymous `Inner` exposes `value`. Tagging the field
 `Inner.value`.
 
 Reachable exported fields promoted through unexported embedded structs are
-readable with `Get` and writable with `Set`, including through map-to-struct
-assignments.
+readable with `Get` and writable with `Set` when addressable, including through
+map-to-struct assignments.
 
 An exact `json:"-"` tag excludes a field from path traversal and map-to-struct
 assignments.
@@ -100,6 +100,12 @@ fields are retained and `Set` reports no write if no selected field changes; an
 appended struct starts from zero. Existing overlays are shallow: preserved
 pointers retain identity, and successful updates to promoted fields reached
 through embedded pointers are visible through other aliases.
+
+When an interface contains a struct value, `Set` cannot replace values stored
+inline in that struct, including nested struct fields and array elements. It can
+update pointees, existing map entries, and existing slice elements reachable
+from the struct. Attempts to replace an unaddressable field or array element, or
+to grow a slice with an unaddressable header, return `ErrPathNotFound`.
 
 ## Change detection
 

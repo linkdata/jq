@@ -1,7 +1,6 @@
 package jq
 
 import (
-	"errors"
 	"reflect"
 	"strings"
 )
@@ -188,7 +187,7 @@ func (d *pointerCycleDetector) visit(v reflect.Value) (cycle bool) {
 func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Value, changed bool, err error) {
 	v = obj
 	if !v.IsValid() {
-		err = errors.Join(err, errPathNotFound{jspath, "<nil>"})
+		err = errPathNotFound{jspath, "<nil>"}
 		return
 	}
 	set := setting != nil
@@ -196,15 +195,8 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 	elem, tail, _ := strings.Cut(jspath, ".")
 	if elem == "" {
 		if set {
-			if !v.CanSet() {
-				if (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) && !v.IsNil() {
-					v = v.Elem()
-				}
-			}
-			if !v.CanSet() {
-				err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-				return
-			}
+			// Set starts at the receiver's settable element. Descent sites reject
+			// unsettable endpoints or stage them in settable values before reaching here.
 			value := setting.value
 			if !value.IsValid() {
 				value = reflect.Zero(v.Type())
@@ -217,7 +209,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 	var followedPointer bool
 	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
-			err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+			err = errPathNotFound{jspath, v.Type().String()}
 			return
 		}
 		if v.Kind() == reflect.Pointer {
@@ -225,7 +217,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 			// avoiding detector work for ordinary one-pointer traversal.
 			if followedPointer {
 				if cycleDetector.visit(v) {
-					err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+					err = errPathNotFound{jspath, v.Type().String()}
 					return
 				}
 			}
@@ -233,12 +225,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 			v = v.Elem()
 			continue
 		}
-		concrete := v.Elem()
-		if set && concrete.Kind() == reflect.Struct && !concrete.CanSet() {
-			err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
-			return
-		}
-		v = concrete
+		v = v.Elem()
 	}
 	switch v.Kind() {
 	case reflect.Array, reflect.Slice:
@@ -281,7 +268,11 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 				return
 			}
 			if idx < v.Len() {
-				return getSet(v.Index(idx), tail, setting)
+				element := v.Index(idx)
+				if set && !element.CanSet() && strings.Trim(tail, ".") == "" {
+					break
+				}
+				return getSet(element, tail, setting)
 			}
 		}
 	case reflect.Map:
@@ -340,9 +331,9 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 	case reflect.Struct:
 		if index, ok := cachedStructFields(v.Type())[elem]; ok {
 			if field, _ := structFieldValue(v, index); field.IsValid() {
-				// CanInterface is how Get determines whether it can return a field. A dots-only
-				// tail also ends here; break reaches the shared error without hiding deeper errors.
-				if set && !field.CanInterface() && strings.Trim(tail, ".") == "" {
+				// A dots-only tail ends here. Reject unsettable Set endpoints before
+				// descent so the error retains this component and type.
+				if set && !field.CanSet() && strings.Trim(tail, ".") == "" {
 					break
 				}
 				return getSet(field, tail, setting)
@@ -380,12 +371,12 @@ func GetAs[T any](obj any, jspath string) (val T, err error) {
 // with a component named by the tag.
 //
 // Exported fields promoted through unexported embedded structs are readable with
-// Get and writable with [Set], including through map-to-struct assignments. An
-// exact `json:"-"` tag excludes a field from the path namespace. Get and [Set]
-// can traverse an explicitly named unexported embedded field on paths to
-// reachable exported fields, but a path ending at the embedded field returns an
-// error matching [ErrPathNotFound]. Traversing a nil pointer or an unresolved
-// pointer/interface cycle returns the same error.
+// Get and writable with [Set] when addressable, including through map-to-struct
+// assignments. An exact `json:"-"` tag excludes a field from the path namespace.
+// Get and [Set] can traverse an explicitly named unexported embedded field on
+// paths to reachable exported fields, but a path ending at the embedded field
+// returns an error matching [ErrPathNotFound]. Traversing a nil pointer or an
+// unresolved pointer/interface cycle returns the same error.
 //
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
@@ -408,7 +399,7 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 	rv := reflect.ValueOf(obj)
 	if rv.Kind() == reflect.Pointer && !rv.IsNil() {
 		setting := assignment{value: reflect.ValueOf(val), log: log}
-		_, changed, err = getSet(rv, jspath, &setting)
+		_, changed, err = getSet(rv.Elem(), jspath, &setting)
 	}
 	return
 }
@@ -433,6 +424,13 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // struct starts from zero. Existing overlays are shallow: preserved pointers
 // retain identity, and successful updates to promoted fields reached through
 // embedded pointers are visible through other aliases.
+//
+// When an interface contains a struct value, Set cannot replace values stored
+// inline in that struct, including nested struct fields and array elements. It
+// can update pointees, existing map entries, and existing slice elements
+// reachable from the struct. Attempts to replace an unaddressable field or array
+// element, or to grow a slice with an unaddressable header, return an error
+// matching [ErrPathNotFound].
 //
 // Set can traverse an explicitly named unexported embedded field to update a
 // reachable exported field. A path ending at the embedded field, or a
