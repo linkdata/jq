@@ -154,7 +154,6 @@ func (errTypeMismatch) Is(other error) bool <span class="cov8" title="1">{
 		<pre class="file" id="file3" style="display: none">package jq
 
 import (
-        "errors"
         "reflect"
         "strings"
 )
@@ -341,7 +340,7 @@ func (d *pointerCycleDetector) visit(v reflect.Value) (cycle bool) <span class="
 func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Value, changed bool, err error) <span class="cov8" title="1">{
         v = obj
         if !v.IsValid() </span><span class="cov8" title="1">{
-                err = errors.Join(err, errPathNotFound{jspath, "&lt;nil&gt;"})
+                err = errPathNotFound{jspath, "&lt;nil&gt;"}
                 return
         }</span>
         <span class="cov8" title="1">set := setting != nil
@@ -349,16 +348,9 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
         elem, tail, _ := strings.Cut(jspath, ".")
         if elem == "" </span><span class="cov8" title="1">{
                 if set </span><span class="cov8" title="1">{
-                        if !v.CanSet() </span><span class="cov8" title="1">{
-                                if (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) &amp;&amp; !v.IsNil() </span><span class="cov8" title="1">{
-                                        v = v.Elem()
-                                }</span>
-                        }
-                        <span class="cov8" title="1">if !v.CanSet() </span><span class="cov8" title="1">{
-                                err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
-                                return
-                        }</span>
-                        <span class="cov8" title="1">value := setting.value
+                        // Set starts at the receiver's settable element. Descent sites reject
+                        // unsettable endpoints or stage them in settable values before reaching here.
+                        value := setting.value
                         if !value.IsValid() </span><span class="cov8" title="1">{
                                 value = reflect.Zero(v.Type())
                         }</span>
@@ -370,7 +362,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
         var followedPointer bool
         for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface </span><span class="cov8" title="1">{
                 if v.IsNil() </span><span class="cov8" title="1">{
-                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                        err = errPathNotFound{jspath, v.Type().String()}
                         return
                 }</span>
                 <span class="cov8" title="1">if v.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
@@ -378,7 +370,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
                         // avoiding detector work for ordinary one-pointer traversal.
                         if followedPointer </span><span class="cov8" title="1">{
                                 if cycleDetector.visit(v) </span><span class="cov8" title="1">{
-                                        err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
+                                        err = errPathNotFound{jspath, v.Type().String()}
                                         return
                                 }</span>
                         }
@@ -386,12 +378,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
                         v = v.Elem()
                         continue</span>
                 }
-                <span class="cov8" title="1">concrete := v.Elem()
-                if set &amp;&amp; concrete.Kind() == reflect.Struct &amp;&amp; !concrete.CanSet() </span><span class="cov8" title="1">{
-                        err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
-                        return
-                }</span>
-                <span class="cov8" title="1">v = concrete</span>
+                <span class="cov8" title="1">v = v.Elem()</span>
         }
         <span class="cov8" title="1">switch v.Kind() </span>{
         case reflect.Array, reflect.Slice:<span class="cov8" title="1">
@@ -434,8 +421,12 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
                                 return</span>
                         }
                         <span class="cov8" title="1">if idx &lt; v.Len() </span><span class="cov8" title="1">{
-                                return getSet(v.Index(idx), tail, setting)
-                        }</span>
+                                element := v.Index(idx)
+                                if set &amp;&amp; !element.CanSet() &amp;&amp; strings.Trim(tail, ".") == "" </span><span class="cov8" title="1">{
+                                        break</span>
+                                }
+                                <span class="cov8" title="1">return getSet(element, tail, setting)</span>
+                        }
                 }
         case reflect.Map:<span class="cov8" title="1">
                 keyType := v.Type().Key()
@@ -493,9 +484,9 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
         case reflect.Struct:<span class="cov8" title="1">
                 if index, ok := cachedStructFields(v.Type())[elem]; ok </span><span class="cov8" title="1">{
                         if field, _ := structFieldValue(v, index); field.IsValid() </span><span class="cov8" title="1">{
-                                // CanInterface is how Get determines whether it can return a field. A dots-only
-                                // tail also ends here; break reaches the shared error without hiding deeper errors.
-                                if set &amp;&amp; !field.CanInterface() &amp;&amp; strings.Trim(tail, ".") == "" </span><span class="cov8" title="1">{
+                                // A dots-only tail ends here. Reject unsettable Set endpoints before
+                                // descent so the error retains this component and type.
+                                if set &amp;&amp; !field.CanSet() &amp;&amp; strings.Trim(tail, ".") == "" </span><span class="cov8" title="1">{
                                         break</span>
                                 }
                                 <span class="cov8" title="1">return getSet(field, tail, setting)</span>
@@ -533,12 +524,12 @@ func GetAs[T any](obj any, jspath string) (val T, err error) <span class="cov8" 
 // with a component named by the tag.
 //
 // Exported fields promoted through unexported embedded structs are readable with
-// Get and writable with [Set], including through map-to-struct assignments. An
-// exact `json:"-"` tag excludes a field from the path namespace. Get and [Set]
-// can traverse an explicitly named unexported embedded field on paths to
-// reachable exported fields, but a path ending at the embedded field returns an
-// error matching [ErrPathNotFound]. Traversing a nil pointer or an unresolved
-// pointer/interface cycle returns the same error.
+// Get and writable with [Set] when addressable, including through map-to-struct
+// assignments. An exact `json:"-"` tag excludes a field from the path namespace.
+// Get and [Set] can traverse an explicitly named unexported embedded field on
+// paths to reachable exported fields, but a path ending at the embedded field
+// returns an error matching [ErrPathNotFound]. Traversing a nil pointer or an
+// unresolved pointer/interface cycle returns the same error.
 //
 // When traversal reaches an array or slice, a component is a valid index only
 // if it is "0" or begins with an ASCII digit from '1' through '9' followed by
@@ -561,7 +552,7 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
         rv := reflect.ValueOf(obj)
         if rv.Kind() == reflect.Pointer &amp;&amp; !rv.IsNil() </span><span class="cov8" title="1">{
                 setting := assignment{value: reflect.ValueOf(val), log: log}
-                _, changed, err = getSet(rv, jspath, &amp;setting)
+                _, changed, err = getSet(rv.Elem(), jspath, &amp;setting)
         }</span>
         <span class="cov8" title="1">return</span>
 }
@@ -586,6 +577,13 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // struct starts from zero. Existing overlays are shallow: preserved pointers
 // retain identity, and successful updates to promoted fields reached through
 // embedded pointers are visible through other aliases.
+//
+// When an interface contains a struct value, Set cannot replace values stored
+// inline in that struct, including nested struct fields and array elements. It
+// can update pointees, existing map entries, and existing slice elements
+// reachable from the struct. Attempts to replace an unaddressable field or array
+// element, or to grow a slice with an unaddressable header, return an error
+// matching [ErrPathNotFound].
 //
 // Set can traverse an explicitly named unexported embedded field to update a
 // reachable exported field. A path ending at the embedded field, or a
