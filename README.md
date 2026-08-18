@@ -101,6 +101,11 @@ appended struct starts from zero. Existing overlays are shallow: preserved
 pointers retain identity, and successful updates to promoted fields reached
 through embedded pointers are visible through other aliases.
 
+When an interface contains a struct value, attempts to replace fields held
+directly by that unaddressable struct, or to grow a slice whose header is held
+there, return `ErrPathNotFound`. `Set` can still update pointees, existing map
+entries, and existing slice elements reachable through those fields.
+
 ## Change detection
 
 `Set` reports whether it performed a write. For an existing destination value,

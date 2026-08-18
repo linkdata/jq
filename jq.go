@@ -197,11 +197,6 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 	if elem == "" {
 		if set {
 			if !v.CanSet() {
-				if (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) && !v.IsNil() {
-					v = v.Elem()
-				}
-			}
-			if !v.CanSet() {
 				err = errors.Join(err, errPathNotFound{jspath, v.Type().String()})
 				return
 			}
@@ -233,12 +228,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 			v = v.Elem()
 			continue
 		}
-		concrete := v.Elem()
-		if set && concrete.Kind() == reflect.Struct && !concrete.CanSet() {
-			err = errors.Join(err, errPathNotFound{jspath, concrete.Type().String()})
-			return
-		}
-		v = concrete
+		v = v.Elem()
 	}
 	switch v.Kind() {
 	case reflect.Array, reflect.Slice:
@@ -408,7 +398,7 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 	rv := reflect.ValueOf(obj)
 	if rv.Kind() == reflect.Pointer && !rv.IsNil() {
 		setting := assignment{value: reflect.ValueOf(val), log: log}
-		_, changed, err = getSet(rv, jspath, &setting)
+		_, changed, err = getSet(rv.Elem(), jspath, &setting)
 	}
 	return
 }
@@ -433,6 +423,12 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // struct starts from zero. Existing overlays are shallow: preserved pointers
 // retain identity, and successful updates to promoted fields reached through
 // embedded pointers are visible through other aliases.
+//
+// When an interface contains a struct value, attempts to replace fields held
+// directly by that unaddressable struct, or to grow a slice whose header is held
+// there, return an error matching [ErrPathNotFound]. Set can still update
+// pointees, existing map entries, and existing slice elements reachable through
+// those fields.
 //
 // Set can traverse an explicitly named unexported embedded field to update a
 // reachable exported field. A path ending at the embedded field, or a
