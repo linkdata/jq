@@ -97,14 +97,13 @@ overflow.
 For map inputs assigned to structs, only entries with matching string keys
 update fields; all other entries are ignored.
 
-A nil interface value supplied by the map stores the field's zero value. A typed
-nil pointer supplied for a pointer or interface field must be assignable to that
-field; an interface field retains the pointer's dynamic type. For other fields,
-it stores the field's zero value only when its pointed-to type is assignable or
-supported by `Set`'s numeric-conversion or map-to-struct rules; otherwise `Set`
-returns `ErrTypeMismatch`. `Set` dereferences a non-nil pointer for a non-pointer
-field, except that for an interface field it does so only when the pointed-to
-type implements the interface.
+A nil interface value supplied by the map stores the field's zero value. A
+pointer supplied for a pointer or interface field is not dereferenced and must
+be assignable to that field; an interface field retains the pointer's dynamic
+type. For other fields, `Set` dereferences a non-nil pointer and stores the
+field's zero value for a nil pointer only when its pointed-to type is assignable
+or supported by `Set`'s numeric-conversion or map-to-struct rules; otherwise
+`Set` returns `ErrTypeMismatch`.
 
 For an existing struct, unselected fields are retained and `Set` reports no
 write if no selected field changes; an appended struct starts from zero.

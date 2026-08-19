@@ -57,24 +57,18 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 			}
 		}
 		// Unwrapping an interface can expose a pointer.
-		if value.Kind() == reflect.Pointer {
+		if value.Kind() == reflect.Pointer && field.Kind() != reflect.Interface {
 			if value.IsNil() {
-				if field.Kind() != reflect.Interface {
-					source := value
-					if field.Kind() != reflect.Pointer {
-						source = reflect.Zero(value.Type().Elem())
-					}
-					zero := reflect.Zero(fieldType)
-					if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil {
-						value = zero
-					}
+				source := value
+				if field.Kind() != reflect.Pointer {
+					source = reflect.Zero(value.Type().Elem())
+				}
+				zero := reflect.Zero(fieldType)
+				if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil {
+					value = zero
 				}
 			} else if field.Kind() != reflect.Pointer {
-				element := value.Elem()
-				// Prefer the element for concrete fields and when it satisfies the interface.
-				if field.Kind() != reflect.Interface || element.Type().AssignableTo(fieldType) {
-					value = element
-				}
+				value = value.Elem()
 			}
 		}
 		var candidate reflect.Value
@@ -433,13 +427,12 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // all other entries are ignored.
 //
 // A nil interface value supplied by the map stores the field's zero value. A
-// typed nil pointer supplied for a pointer or interface field must be assignable
-// to that field; an interface field retains the pointer's dynamic type. For
-// other fields, it stores the field's zero value only when its pointed-to type
-// is assignable or supported by Set's numeric-conversion or map-to-struct rules;
-// otherwise Set returns an error matching [ErrTypeMismatch]. Set dereferences a
-// non-nil pointer for a non-pointer field, except that for an interface field it
-// does so only when the pointed-to type implements the interface.
+// pointer supplied for a pointer or interface field is not dereferenced and
+// must be assignable to that field; an interface field retains the pointer's
+// dynamic type. For other fields, Set dereferences a non-nil pointer and stores
+// the field's zero value for a nil pointer only when its pointed-to type is
+// assignable or supported by Set's numeric-conversion or map-to-struct rules;
+// otherwise Set returns an error matching [ErrTypeMismatch].
 //
 // For an existing struct, unselected fields are retained and Set reports no
 // write if no selected field changes; an appended struct starts from zero.
