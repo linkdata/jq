@@ -2,6 +2,7 @@ package jq_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/linkdata/jq"
@@ -49,13 +50,16 @@ func TestSetStructAcceptsInterfacePointerMapValue(t *testing.T) {
 		changed, err := jq.Set(&x, "", map[string]any{"Value": &value})
 		maybeError(t, err)
 		mustEqual(t, changed, true)
-		mustEqual(t, x.Value, 42)
+		stored, ok := x.Value.(*int)
+		if !ok || stored != &value {
+			t.Fatalf("Value = %#v (%T), want original *int", x.Value, x.Value)
+		}
 
 		var nilValue *int
 		changed, err = jq.Set(&x, "", map[string]any{"Value": nilValue})
 		maybeError(t, err)
 		mustEqual(t, changed, true)
-		stored, ok := x.Value.(*int)
+		stored, ok = x.Value.(*int)
 		if !ok || stored != nil {
 			t.Fatalf("Value = %#v (%T), want nil *int", x.Value, x.Value)
 		}
@@ -90,6 +94,71 @@ func TestSetStructAcceptsInterfacePointerMapValue(t *testing.T) {
 		maybeError(t, err)
 		mustEqual(t, changed, true)
 		mustEqual(t, x.Child.Value, 42)
+	})
+}
+
+func TestSetStructPreservesPointerMapValueInInterface(t *testing.T) {
+	type item struct {
+		Number int `json:"number"`
+	}
+	type holder struct {
+		Value any `json:"value"`
+	}
+
+	t.Run("identity and descendants", func(t *testing.T) {
+		source := &item{Number: 1}
+		var value holder
+		changed, err := jq.Set(&value, "", map[string]any{"value": source})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, ok := value.Value.(*item)
+		if !changed || !ok || stored != source {
+			t.Fatalf("Set = (%t, %v), Value = %#v (%T); want true, nil, original pointer", changed, err, value.Value, value.Value)
+		}
+
+		checks := 0
+		replacement := &item{Number: 1}
+		changed, err = jq.SetChecked(&value, "", map[string]any{"value": replacement}, func() error {
+			checks++
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed || checks != 0 || value.Value != source {
+			t.Fatalf("deeply equal SetChecked = (%t, %v), checks/Value = %d/%#v; want false, nil, 0/original pointer", changed, err, checks, value.Value)
+		}
+
+		changed, err = jq.Set(&value, "value.number", 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !changed || source.Number != 2 {
+			t.Fatalf("descendant Set = (%t, %v), source.Number = %d; want true, nil, 2", changed, err, source.Number)
+		}
+	})
+
+	t.Run("non-copyable pointee", func(t *testing.T) {
+		var source strings.Builder
+		if _, err := source.WriteString("hello"); err != nil {
+			t.Fatal(err)
+		}
+		var value holder
+		changed, err := jq.Set(&value, "", map[string]any{"value": &source})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, ok := value.Value.(*strings.Builder)
+		if !changed || !ok || stored != &source {
+			t.Fatalf("Set = (%t, %v), Value = %T; want true, nil, original *strings.Builder", changed, err, value.Value)
+		}
+		if _, err := stored.WriteString(" world"); err != nil {
+			t.Fatal(err)
+		}
+		if got := source.String(); got != "hello world" {
+			t.Fatalf("source = %q, want %q", got, "hello world")
+		}
 	})
 }
 
@@ -143,15 +212,12 @@ func TestSetStructAcceptsPointerOnlyInterfaceMapValue(t *testing.T) {
 		}
 	})
 
-	t.Run("pointer to interface", func(t *testing.T) {
+	t.Run("pointer to interface type", func(t *testing.T) {
 		var value holder
 		input := error(errors.New("element"))
 		changed, err := jq.Set(&value, "", map[string]any{"err": &input})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !changed || value.Err != input {
-			t.Fatalf("Set = (%t, %v), error = %v; want true, nil, pointed-to error", changed, err, value.Err)
+		if changed || !errors.Is(err, jq.ErrTypeMismatch) || value.Err != nil {
+			t.Fatalf("Set = (%t, %v), error = %v; want false, ErrTypeMismatch, nil", changed, err, value.Err)
 		}
 	})
 
