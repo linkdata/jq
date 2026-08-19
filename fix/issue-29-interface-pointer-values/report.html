@@ -210,19 +210,17 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
                         }</span>
                 }
                 // Unwrapping an interface can expose a pointer.
-                <span class="cov8" title="1">if value.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
+                <span class="cov8" title="1">if value.Kind() == reflect.Pointer &amp;&amp; field.Kind() != reflect.Interface </span><span class="cov8" title="1">{
                         if value.IsNil() </span><span class="cov8" title="1">{
-                                if field.Kind() != reflect.Interface </span><span class="cov8" title="1">{
-                                        source := value
-                                        if field.Kind() != reflect.Pointer </span><span class="cov8" title="1">{
-                                                source = reflect.Zero(value.Type().Elem())
-                                        }</span>
-                                        <span class="cov8" title="1">zero := reflect.Zero(fieldType)
-                                        if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil </span><span class="cov8" title="1">{
-                                                value = zero
-                                        }</span>
-                                }
-                        } else<span class="cov8" title="1"> if field.Kind() != reflect.Pointer &amp;&amp; field.Kind() != reflect.Interface </span><span class="cov8" title="1">{
+                                source := value
+                                if field.Kind() != reflect.Pointer </span><span class="cov8" title="1">{
+                                        source = reflect.Zero(value.Type().Elem())
+                                }</span>
+                                <span class="cov8" title="1">zero := reflect.Zero(fieldType)
+                                if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil </span><span class="cov8" title="1">{
+                                        value = zero
+                                }</span>
+                        } else<span class="cov8" title="1"> if field.Kind() != reflect.Pointer </span><span class="cov8" title="1">{
                                 value = value.Elem()
                         }</span>
                 }
