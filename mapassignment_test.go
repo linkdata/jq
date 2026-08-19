@@ -55,7 +55,14 @@ func TestSetStructAcceptsInterfacePointerMapValue(t *testing.T) {
 		changed, err = jq.Set(&x, "", map[string]any{"Value": nilValue})
 		maybeError(t, err)
 		mustEqual(t, changed, true)
-		mustEqual(t, x.Value, nil)
+		stored, ok := x.Value.(*int)
+		if !ok || stored != nil {
+			t.Fatalf("Value = %#v (%T), want nil *int", x.Value, x.Value)
+		}
+
+		changed, err = jq.Set(&x, "", map[string]any{"Value": nilValue})
+		maybeError(t, err)
+		mustEqual(t, changed, false)
 	})
 
 	t.Run("numeric conversion", func(t *testing.T) {
