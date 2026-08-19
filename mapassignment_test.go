@@ -153,12 +153,6 @@ func TestSetStructPreservesPointerMapValueInInterface(t *testing.T) {
 		if !changed || !ok || stored != &source {
 			t.Fatalf("Set = (%t, %v), Value = %T; want true, nil, original *strings.Builder", changed, err, value.Value)
 		}
-		if _, err := stored.WriteString(" world"); err != nil {
-			t.Fatal(err)
-		}
-		if got := source.String(); got != "hello world" {
-			t.Fatalf("source = %q, want %q", got, "hello world")
-		}
 	})
 }
 

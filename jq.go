@@ -57,19 +57,17 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 			}
 		}
 		// Unwrapping an interface can expose a pointer.
-		if value.Kind() == reflect.Pointer {
+		if value.Kind() == reflect.Pointer && field.Kind() != reflect.Interface {
 			if value.IsNil() {
-				if field.Kind() != reflect.Interface {
-					source := value
-					if field.Kind() != reflect.Pointer {
-						source = reflect.Zero(value.Type().Elem())
-					}
-					zero := reflect.Zero(fieldType)
-					if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil {
-						value = zero
-					}
+				source := value
+				if field.Kind() != reflect.Pointer {
+					source = reflect.Zero(value.Type().Elem())
 				}
-			} else if field.Kind() != reflect.Pointer && field.Kind() != reflect.Interface {
+				zero := reflect.Zero(fieldType)
+				if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil {
+					value = zero
+				}
+			} else if field.Kind() != reflect.Pointer {
 				value = value.Elem()
 			}
 		}
