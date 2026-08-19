@@ -210,25 +210,19 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
                         }</span>
                 }
                 // Unwrapping an interface can expose a pointer.
-                <span class="cov8" title="1">if value.Kind() == reflect.Pointer </span><span class="cov8" title="1">{
+                <span class="cov8" title="1">if value.Kind() == reflect.Pointer &amp;&amp; field.Kind() != reflect.Interface </span><span class="cov8" title="1">{
                         if value.IsNil() </span><span class="cov8" title="1">{
-                                if field.Kind() != reflect.Interface </span><span class="cov8" title="1">{
-                                        source := value
-                                        if field.Kind() != reflect.Pointer </span><span class="cov8" title="1">{
-                                                source = reflect.Zero(value.Type().Elem())
-                                        }</span>
-                                        <span class="cov8" title="1">zero := reflect.Zero(fieldType)
-                                        if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil </span><span class="cov8" title="1">{
-                                                value = zero
-                                        }</span>
-                                }
-                        } else<span class="cov8" title="1"> if field.Kind() != reflect.Pointer </span><span class="cov8" title="1">{
-                                element := value.Elem()
-                                // Prefer the element for concrete fields and when it satisfies the interface.
-                                if field.Kind() != reflect.Interface || element.Type().AssignableTo(fieldType) </span><span class="cov8" title="1">{
-                                        value = element
+                                source := value
+                                if field.Kind() != reflect.Pointer </span><span class="cov8" title="1">{
+                                        source = reflect.Zero(value.Type().Elem())
                                 }</span>
-                        }
+                                <span class="cov8" title="1">zero := reflect.Zero(fieldType)
+                                if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil </span><span class="cov8" title="1">{
+                                        value = zero
+                                }</span>
+                        } else<span class="cov8" title="1"> if field.Kind() != reflect.Pointer </span><span class="cov8" title="1">{
+                                value = value.Elem()
+                        }</span>
                 }
                 <span class="cov8" title="1">var candidate reflect.Value
                 var change bool
@@ -586,13 +580,12 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // all other entries are ignored.
 //
 // A nil interface value supplied by the map stores the field's zero value. A
-// typed nil pointer supplied for a pointer or interface field must be assignable
-// to that field; an interface field retains the pointer's dynamic type. For
-// other fields, it stores the field's zero value only when its pointed-to type
-// is assignable or supported by Set's numeric-conversion or map-to-struct rules;
-// otherwise Set returns an error matching [ErrTypeMismatch]. Set dereferences a
-// non-nil pointer for a non-pointer field, except that for an interface field it
-// does so only when the pointed-to type implements the interface.
+// pointer supplied for a pointer or interface field is not dereferenced and
+// must be assignable to that field; an interface field retains the pointer's
+// dynamic type. For other fields, Set dereferences a non-nil pointer and stores
+// the field's zero value for a nil pointer only when its pointed-to type is
+// assignable or supported by Set's numeric-conversion or map-to-struct rules;
+// otherwise Set returns an error matching [ErrTypeMismatch].
 //
 // For an existing struct, unselected fields are retained and Set reports no
 // write if no selected field changes; an appended struct starts from zero.
