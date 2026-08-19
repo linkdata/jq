@@ -65,7 +65,7 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 						source = reflect.Zero(value.Type().Elem())
 					}
 					zero := reflect.Zero(fieldType)
-					if _, candidateErr := prepareAssignment(source, zero); candidateErr == nil {
+					if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil {
 						value = zero
 					}
 				}
@@ -101,22 +101,21 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 	return
 }
 
-// prepareAssignment returns a candidate assignable to into's type without
-// writing to into.
-func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err error) {
-	if err = assignable(from, into); err == nil {
+// prepareZeroAssignment prepares a candidate for an isolated zero value.
+func prepareZeroAssignment(from, zero reflect.Value) (candidate reflect.Value, err error) {
+	if err = assignable(from, zero); err == nil {
 		candidate = from
 		return
 	}
-	if from.Kind() == reflect.Map && into.Kind() == reflect.Struct {
-		candidate = cloneValue(into)
+	if from.Kind() == reflect.Map && zero.Kind() == reflect.Struct {
+		candidate = cloneValue(zero)
 		_, err = assignMap(from, candidate, nil)
 		return
 	}
-	if isNumber(from.Kind()) && isNumber(into.Kind()) {
-		if from.Type().ConvertibleTo(into.Type()) {
+	if isNumber(from.Kind()) && isNumber(zero.Kind()) {
+		if from.Type().ConvertibleTo(zero.Type()) {
 			err = nil
-			candidate = from.Convert(into.Type())
+			candidate = from.Convert(zero.Type())
 		}
 	}
 	return
@@ -256,7 +255,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 					if !value.IsValid() {
 						value = zero
 					}
-					if candidate, err = prepareAssignment(value, zero); err != nil {
+					if candidate, err = prepareZeroAssignment(value, zero); err != nil {
 						return
 					}
 				} else {
