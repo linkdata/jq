@@ -12,6 +12,10 @@ type nilAssignmentChild struct {
 	Value int `json:"value"`
 }
 
+type nilAssignmentTags map[string]string
+
+type nilAssignmentIntPtr *int
+
 type nilAssignmentError struct {
 	message string
 }
@@ -107,6 +111,57 @@ func TestSetStructNormalizesCompatibleTypedNilMapValues(t *testing.T) {
 		}
 		if !changed || value.Scalar != 0 {
 			t.Fatalf("Set = (%t, %v), scalar = %d; want true, nil, 0", changed, err, value.Scalar)
+		}
+	})
+}
+
+func TestSetStructCompatibleTypedNilDefinedTypesAreIdempotent(t *testing.T) {
+	t.Run("map", func(t *testing.T) {
+		value := struct {
+			Tags nilAssignmentTags `json:"tags"`
+		}{Tags: nilAssignmentTags{"key": "value"}}
+		var input *map[string]string
+
+		changed, err := jq.Set(&value, "", map[string]any{"tags": input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !changed || value.Tags != nil {
+			t.Fatalf("Set = (%t, %v), tags = %#v; want true, nil, nil", changed, err, value.Tags)
+		}
+
+		checks := 0
+		changed, err = jq.SetChecked(&value, "", map[string]any{"tags": input}, func() error {
+			checks++
+			return nil
+		})
+		if changed || err != nil || checks != 0 || value.Tags != nil {
+			t.Fatalf("SetChecked = (%t, %v), checks/tags = %d/%#v; want false, nil, 0/nil", changed, err, checks, value.Tags)
+		}
+	})
+
+	t.Run("pointer", func(t *testing.T) {
+		number := 1
+		value := struct {
+			Pointer nilAssignmentIntPtr `json:"pointer"`
+		}{Pointer: nilAssignmentIntPtr(&number)}
+		var input *int
+
+		changed, err := jq.Set(&value, "", map[string]any{"pointer": input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !changed || value.Pointer != nil {
+			t.Fatalf("Set = (%t, %v), pointer = %#v; want true, nil, nil", changed, err, value.Pointer)
+		}
+
+		checks := 0
+		changed, err = jq.SetChecked(&value, "", map[string]any{"pointer": input}, func() error {
+			checks++
+			return nil
+		})
+		if changed || err != nil || checks != 0 || value.Pointer != nil {
+			t.Fatalf("SetChecked = (%t, %v), checks/pointer = %d/%#v; want false, nil, 0/nil", changed, err, checks, value.Pointer)
 		}
 	})
 }
