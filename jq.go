@@ -57,10 +57,16 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 			}
 		}
 		// Unwrapping an interface can expose a pointer.
-		if value.Kind() == reflect.Pointer {
+		if value.Kind() == reflect.Pointer && field.Kind() != reflect.Pointer {
 			if value.IsNil() {
-				value = reflect.Zero(fieldType)
-			} else if field.Kind() != reflect.Pointer {
+				if field.Kind() != reflect.Interface {
+					element := reflect.Zero(value.Type().Elem())
+					zero := reflect.Zero(fieldType)
+					if candidate, candidateErr := prepareAssignment(element, zero); candidateErr == nil {
+						value = candidate
+					}
+				}
+			} else {
 				element := value.Elem()
 				// Prefer the element for concrete fields and when it satisfies the interface.
 				if field.Kind() != reflect.Interface || element.Type().AssignableTo(fieldType) {
@@ -92,11 +98,9 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
 	return
 }
 
-// stageNewElement returns a candidate for a new slice element.
-func stageNewElement(from, into reflect.Value) (candidate reflect.Value, err error) {
-	// Keep this dispatch separate from stageValue. The caller supplies a zero
-	// destination that cannot be observed before append, so change detection is
-	// unnecessary.
+// prepareAssignment returns a candidate assignable to into's type without
+// writing to into.
+func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err error) {
 	if err = assignable(from, into); err == nil {
 		candidate = from
 		return
@@ -249,7 +253,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
 					if !value.IsValid() {
 						value = zero
 					}
-					if candidate, err = stageNewElement(value, zero); err != nil {
+					if candidate, err = prepareAssignment(value, zero); err != nil {
 						return
 					}
 				} else {
@@ -426,10 +430,14 @@ func set(obj any, jspath string, val any, log *undoLog) (changed bool, err error
 // field-selection rules. Only entries with matching string keys update fields;
 // all other entries are ignored.
 //
-// A nil pointer supplied by the map stores the field's zero value. Set
-// dereferences a non-nil pointer for a non-pointer field, except that for an
-// interface field it does so only when the pointed-to type implements the
-// interface.
+// A nil interface value supplied by the map stores the field's zero value. A
+// typed nil pointer supplied for a pointer or interface field retains its type
+// and must be assignable to that field. For other fields, it stores the field's
+// zero value only when its pointed-to type is assignable or supported by Set's
+// numeric-conversion or map-to-struct rules; otherwise Set returns an error
+// matching [ErrTypeMismatch]. Set dereferences a non-nil pointer for a
+// non-pointer field, except that for an interface field it does so only when the
+// pointed-to type implements the interface.
 //
 // For an existing struct, unselected fields are retained and Set reports no
 // write if no selected field changes; an appended struct starts from zero.
