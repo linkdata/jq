@@ -218,7 +218,7 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
                                                 source = reflect.Zero(value.Type().Elem())
                                         }</span>
                                         <span class="cov8" title="1">zero := reflect.Zero(fieldType)
-                                        if _, candidateErr := prepareAssignment(source, zero); candidateErr == nil </span><span class="cov8" title="1">{
+                                        if _, candidateErr := prepareZeroAssignment(source, zero); candidateErr == nil </span><span class="cov8" title="1">{
                                                 value = zero
                                         }</span>
                                 }
@@ -254,22 +254,21 @@ func assignMap(from, into reflect.Value, log *undoLog) (changed bool, err error)
         <span class="cov8" title="1">return</span>
 }
 
-// prepareAssignment returns a candidate assignable to into's type without
-// writing to into.
-func prepareAssignment(from, into reflect.Value) (candidate reflect.Value, err error) <span class="cov8" title="1">{
-        if err = assignable(from, into); err == nil </span><span class="cov8" title="1">{
+// prepareZeroAssignment prepares a candidate for an isolated zero value.
+func prepareZeroAssignment(from, zero reflect.Value) (candidate reflect.Value, err error) <span class="cov8" title="1">{
+        if err = assignable(from, zero); err == nil </span><span class="cov8" title="1">{
                 candidate = from
                 return
         }</span>
-        <span class="cov8" title="1">if from.Kind() == reflect.Map &amp;&amp; into.Kind() == reflect.Struct </span><span class="cov8" title="1">{
-                candidate = cloneValue(into)
+        <span class="cov8" title="1">if from.Kind() == reflect.Map &amp;&amp; zero.Kind() == reflect.Struct </span><span class="cov8" title="1">{
+                candidate = cloneValue(zero)
                 _, err = assignMap(from, candidate, nil)
                 return
         }</span>
-        <span class="cov8" title="1">if isNumber(from.Kind()) &amp;&amp; isNumber(into.Kind()) </span><span class="cov8" title="1">{
-                if from.Type().ConvertibleTo(into.Type()) </span><span class="cov8" title="1">{
+        <span class="cov8" title="1">if isNumber(from.Kind()) &amp;&amp; isNumber(zero.Kind()) </span><span class="cov8" title="1">{
+                if from.Type().ConvertibleTo(zero.Type()) </span><span class="cov8" title="1">{
                         err = nil
-                        candidate = from.Convert(into.Type())
+                        candidate = from.Convert(zero.Type())
                 }</span>
         }
         <span class="cov8" title="1">return</span>
@@ -409,7 +408,7 @@ func getSet(obj reflect.Value, jspath string, setting *assignment) (v reflect.Va
                                         if !value.IsValid() </span><span class="cov8" title="1">{
                                                 value = zero
                                         }</span>
-                                        <span class="cov8" title="1">if candidate, err = prepareAssignment(value, zero); err != nil </span><span class="cov8" title="1">{
+                                        <span class="cov8" title="1">if candidate, err = prepareZeroAssignment(value, zero); err != nil </span><span class="cov8" title="1">{
                                                 return
                                         }</span>
                                 } else<span class="cov8" title="1"> {
