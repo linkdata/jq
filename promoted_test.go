@@ -58,6 +58,22 @@ func jsonSnapshot(t *testing.T, value any) string {
 	return string(data)
 }
 
+// jsonOnlyKey marshals value and returns the sole object key it produced.
+func jsonOnlyKey(t *testing.T, value any) string {
+	t.Helper()
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonSnapshot(t, value)), &object); err != nil {
+		t.Fatal(err)
+	}
+	if len(object) != 1 {
+		t.Fatalf("json.Marshal produced %d keys, want 1", len(object))
+	}
+	for name := range object {
+		return name
+	}
+	panic("unreachable")
+}
+
 func TestPromotedFieldPaths(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -686,18 +702,19 @@ func TestPromotedFieldSelectionDetails(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid tag falls back to Go name", func(t *testing.T) {
+	t.Run("tag name with unusual runes matches encoding/json", func(t *testing.T) {
 		typeOf := reflect.StructOf([]reflect.StructField{
 			{Name: "Value", Type: reflect.TypeFor[int](), Tag: `json:"bad\\name"`},
 		})
 		value := reflect.New(typeOf)
 		value.Elem().Field(0).SetInt(1)
-		if got := jsonSnapshot(t, value.Interface()); got != `{"Value":1}` {
-			t.Fatalf("json.Marshal = %s", got)
-		}
-		got, err := jq.Get(value.Interface(), "Value")
+		// encoding/json selects a different name for this tag with and
+		// without the jsonv2 GOEXPERIMENT, so take the selected name from
+		// the marshaled output rather than hardcoding one.
+		name := jsonOnlyKey(t, value.Interface())
+		got, err := jq.Get(value.Interface(), name)
 		if err != nil || got != 1 {
-			t.Fatalf("Get = %#v, %v; want 1, nil", got, err)
+			t.Fatalf("Get(%q) = %#v, %v; want 1, nil", name, got, err)
 		}
 	})
 

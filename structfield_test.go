@@ -3,6 +3,7 @@ package jq
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -135,5 +136,41 @@ func TestResolveStructFieldsMatchesEncodingJSON(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestTaggedFieldNamesMatchEncodingJSON(t *testing.T) {
+	tags := []string{
+		"", "value", "value,omitempty", ",omitempty", "-,omitempty",
+		"bad name", "bad\tname", "a{b", "9lives", "_under", "h\u00e9llo", "\xff\xfe",
+		`bad\name`, `a-b\name`, `a\b,omitempty`, `'quoted,name'`, `"double"`, "back`tick",
+	}
+	for _, tag := range tags {
+		t.Run(strconv.Quote(tag), func(t *testing.T) {
+			typ := reflect.StructOf([]reflect.StructField{
+				{Name: "Value", Type: reflect.TypeFor[int](), Tag: reflect.StructTag("json:" + strconv.Quote(tag))},
+			})
+			value := reflect.New(typ).Elem()
+			value.Field(0).SetInt(1)
+
+			data, err := json.Marshal(value.Interface())
+			if err != nil {
+				t.Fatalf("json.Marshal: %v", err)
+			}
+			want := make(map[string]int)
+			if err = json.Unmarshal(data, &want); err != nil {
+				t.Fatalf("json.Unmarshal(%s): %v", data, err)
+			}
+
+			got := resolveStructFields(typ)
+			if len(got) != len(want) {
+				t.Fatalf("fields = %v, JSON = %s", got, data)
+			}
+			for name := range got {
+				if _, ok := want[name]; !ok {
+					t.Fatalf("field %q not selected by JSON %s", name, data)
+				}
+			}
+		})
 	}
 }
