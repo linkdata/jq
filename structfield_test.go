@@ -142,8 +142,8 @@ func TestResolveStructFieldsMatchesEncodingJSON(t *testing.T) {
 func TestTaggedFieldNamesMatchEncodingJSON(t *testing.T) {
 	tags := []string{
 		"", "value", "value,omitempty", ",omitempty", "-,omitempty",
-		"bad name", "bad\tname", "a{b", "9lives", "_under", "h\u00e9llo",
-		`bad\name`, `a\b,omitempty`, `'quoted,name'`, `"double"`, "back`tick",
+		"bad name", "bad\tname", "a{b", "9lives", "_under", "h\u00e9llo", "\xff\xfe",
+		`bad\name`, `a-b\name`, `a\b,omitempty`, `'quoted,name'`, `"double"`, "back`tick",
 	}
 	for _, tag := range tags {
 		t.Run(strconv.Quote(tag), func(t *testing.T) {

@@ -17,30 +17,19 @@ import (
 // reserved rune is reparsed as a tag option, which keeps a leading Go
 // identifier and otherwise leaves the field using its Go name.
 func taggedJSONName(tag string) (name string, tagged bool) {
-	if tag == "" || strings.HasPrefix(tag, ",") {
-		return
-	}
-	n := len(tag) - len(strings.TrimLeftFunc(tag, unreservedTagRune))
-	name = tag[:n]
-	if n < len(tag) && !strings.HasPrefix(tag[n:], ",") {
-		if r, _ := utf8.DecodeRuneInString(tag); r != '_' && !unicode.IsLetter(r) {
-			return "", false
+	name, _, _ = strings.Cut(tag, ",")
+	if strings.ContainsAny(name, "\\'\"`") {
+		for i, r := range name {
+			if r == '_' || unicode.IsLetter(r) || i > 0 && unicode.IsNumber(r) {
+				continue
+			}
+			name = name[:i]
+			break
 		}
-		name = tag[:len(tag)-len(strings.TrimLeftFunc(tag, identifierTagRune))]
 	}
 	if !utf8.ValidString(name) {
 		name = string([]rune(name))
 	}
-	return name, true
-}
-
-// unreservedTagRune reports whether r may appear in an unescaped tag name.
-func unreservedTagRune(r rune) bool {
-	return !strings.ContainsRune(",\\'\"`", r)
-}
-
-// identifierTagRune reports whether r may continue a Go identifier used as a
-// tag option.
-func identifierTagRune(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r)
+	tagged = name != ""
+	return
 }
