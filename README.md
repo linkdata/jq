@@ -1,5 +1,5 @@
 [![build](https://github.com/linkdata/jq/actions/workflows/build.yml/badge.svg)](https://github.com/linkdata/jq/actions/workflows/build.yml)
-[![coverage](https://github.com/linkdata/jq/blob/coverage/main/badge.svg)](https://html-preview.github.io/?url=https://github.com/linkdata/jq/blob/coverage/main/report.html)
+[![coverage](https://github.com/linkdata/jq/blob/gitcoverage/main/badge.svg)](https://html-preview.github.io/?url=https://github.com/linkdata/jq/blob/gitcoverage/main/report.html)
 [![Docs](https://godoc.org/github.com/linkdata/jq?status.svg)](https://godoc.org/github.com/linkdata/jq)
 
 # jq
