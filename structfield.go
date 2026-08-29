@@ -3,9 +3,7 @@ package jq
 import (
 	"reflect"
 	"slices"
-	"strings"
 	"sync"
-	"unicode"
 )
 
 var structFieldsCache sync.Map
@@ -103,30 +101,10 @@ func jsonFieldName(field reflect.StructField) (name string, tagged, ignored bool
 	if ignored = tag == "-"; ignored {
 		return
 	}
-	name, _, _ = strings.Cut(tag, ",")
-	if !validJSONFieldName(name) {
-		name = ""
-	}
-	tagged = name != ""
-	if !tagged {
+	if name, tagged = taggedJSONName(tag); !tagged {
 		name = field.Name
 	}
 	return
-}
-
-func validJSONFieldName(name string) (valid bool) {
-	if name == "" {
-		return
-	}
-	for _, r := range name {
-		if strings.ContainsRune("!#$%&()*+-./:;<=>?@[]^_{|}~ ", r) {
-			continue
-		}
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			return
-		}
-	}
-	return true
 }
 
 // structFieldValue follows index without initializing nil pointers and reports
